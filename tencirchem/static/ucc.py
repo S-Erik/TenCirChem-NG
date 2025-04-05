@@ -29,7 +29,6 @@ import tensorcircuit as tc
 from tencirchem.constants import DISCARD_EPS
 from tencirchem.molecule import _Molecule
 from tencirchem.utils.misc import reverse_qop_idx, scipy_opt_wrap, rdm_mo2ao, canonical_mo_coeff
-from tencirchem.utils.circuit import get_circuit_dataframe
 from tencirchem.static.engine_ucc import (
     get_civector,
     get_statevector,
@@ -45,7 +44,6 @@ from tencirchem.static.hamiltonian import (
     get_hop_hcb_from_integral,
 )
 from tencirchem.static.ci_utils import get_ci_strings, get_ex_bitstring, get_addr, get_init_civector
-from tencirchem.static.evolve_tensornetwork import get_circuit
 
 
 logger = logging.getLogger(__name__)

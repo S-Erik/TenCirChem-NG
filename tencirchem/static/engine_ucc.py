@@ -22,21 +22,17 @@ from tencirchem.static.evolve_civector import (
     apply_excitation_civector_nocache,
 )
 from tencirchem.static.evolve_civector import get_civector as get_civector_
-from tencirchem.static.evolve_statevector import apply_excitation_statevector
-from tencirchem.static.evolve_statevector import get_statevector as get_statevector_
-from tencirchem.static.evolve_tensornetwork import get_statevector_tensornetwork
-from tencirchem.static.evolve_pyscf import get_civector_pyscf, get_energy_and_grad_pyscf, apply_excitation_pyscf
 
 
 logger = logging.getLogger(__name__)
 
 
 GETVECTOR_MAP = {
-    "tensornetwork": get_statevector_tensornetwork,
-    "statevector": get_statevector_,
+    # "tensornetwork": get_statevector_tensornetwork,
+    # "statevector": get_statevector_,
     "civector": get_civector_,
     "civector-large": get_civector_nocache,
-    "pyscf": get_civector_pyscf,
+    # "pyscf": get_civector_pyscf,
 }
 
 
@@ -113,7 +109,7 @@ ENERGY_AND_GRAD_MAP = {
     "statevector": get_energy_and_grad_statevector,
     "civector": get_energy_and_grad_civector,
     "civector-large": get_energy_and_grad_civector_nocache,
-    "pyscf": get_energy_and_grad_pyscf,
+    # "pyscf": get_energy_and_grad_pyscf,
 }
 
 
@@ -129,11 +125,11 @@ def get_energy_and_grad(params, hamiltonian, n_qubits, n_elec_s, ex_ops, param_i
 
 APPLY_EXCITATION_MAP = {
     # share the same function with statevector engine
-    "tensornetwork": apply_excitation_statevector,
-    "statevector": apply_excitation_statevector,
+    # "tensornetwork": apply_excitation_statevector,
+    # "statevector": apply_excitation_statevector,
     "civector": apply_excitation_civector,
     "civector-large": apply_excitation_civector_nocache,
-    "pyscf": apply_excitation_pyscf,
+    # "pyscf": apply_excitation_pyscf,
 }
 
 

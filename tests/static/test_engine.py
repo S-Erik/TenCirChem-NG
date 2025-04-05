@@ -6,7 +6,6 @@ from tencirchem import UCCSD, ROUCCSD, set_backend
 from tencirchem.molecule import h4
 from tencirchem.static.engine_ucc import apply_excitation
 from tencirchem.static.ci_utils import get_init_civector
-from tencirchem.static.evolve_tensornetwork import get_init_circuit
 
 
 @pytest.fixture

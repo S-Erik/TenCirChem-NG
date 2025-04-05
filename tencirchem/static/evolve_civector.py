@@ -174,7 +174,10 @@ def evolve_civector_by_tensor(
         _civector += theta_1mcos[j] * f2ket + theta_sin[j] * fket
         return _civector
 
-    return fori_loop(0, len(fket_permutation_tensor), _evolve_excitation, civector)
+    val = civector
+    for i in range(0, len(fket_permutation_tensor)):
+        val = _evolve_excitation(i, val)
+    return val
 
 
 @partial(jit, static_argnums=[1, 2, 3, 4, 5])
