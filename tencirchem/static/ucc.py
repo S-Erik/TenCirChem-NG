@@ -28,7 +28,7 @@ import tensorcircuit as tc
 
 from tencirchem.constants import DISCARD_EPS
 from tencirchem.molecule import _Molecule
-from tencirchem.utils.misc import reverse_qop_idx, scipy_opt_wrap, rdm_mo2ao, canonical_mo_coeff
+from tencirchem.utils.misc import reverse_qop_idx, canonical_mo_coeff
 from tencirchem.static.engine_ucc import (
     get_civector,
     get_statevector,
@@ -385,79 +385,6 @@ class UCC:
         # for manually set
         self._params = None
 
-    def kernel(self) -> float:
-        """
-        The kernel to perform the VQE algorithm.
-        The L-BFGS-B method in SciPy is used for optimization
-        and configuration is possible by setting the ``self.scipy_minimize_options`` attribute.
-
-        Returns
-        -------
-        e: float
-            The optimized energy
-        """
-        assert len(self.param_ids) == len(self.ex_ops)
-
-        energy_and_grad, stating_time = self.get_opt_function(with_time=True)
-
-        if self.init_guess is None:
-            self.init_guess = np.zeros(self.n_params)
-
-        # optimization options
-        if self.scipy_minimize_options is None:
-            # quite strict
-            options = {"ftol": 1e1 * np.finfo(tc.rdtypestr).eps, "gtol": 1e2 * np.finfo(tc.rdtypestr).eps}
-        else:
-            options = self.scipy_minimize_options
-
-        logger.info("Begin optimization")
-
-        time1 = time()
-        opt_res = minimize(energy_and_grad, x0=self.init_guess, jac=True, method="L-BFGS-B", options=options)
-        time2 = time()
-
-        if not opt_res.success:
-            logger.warning("Optimization failed. See `.opt_res` for details.")
-
-        opt_res["staging_time"] = stating_time
-        opt_res["opt_time"] = time2 - time1
-        opt_res["init_guess"] = self.init_guess
-        opt_res["e"] = float(opt_res.fun)
-        self.opt_res = opt_res
-        # prepare for future modification
-        self.params = opt_res.x.copy()
-        return opt_res.e
-
-    def get_opt_function(self, with_time: bool = False) -> Union[Callable, Tuple[Callable, float]]:
-        """
-        Returns the cost function in SciPy format for optimization.
-        The gradient is included.
-        Basically a wrapper to :func:`energy_and_grad`.
-
-        Parameters
-        ----------
-        with_time: bool, optional
-            Whether return staging time. Defaults to False.
-
-        Returns
-        -------
-        opt_function: Callable
-            The optimization cost function in SciPy format.
-        time: float
-            Staging time. Returned when ``with_time`` is set to ``True``.
-        """
-        energy_and_grad = scipy_opt_wrap(partial(self.energy_and_grad, engine=self.engine))
-
-        time1 = time()
-        if tc.backend.name == "jax":
-            logger.info("JIT compiling the circuit")
-            _ = energy_and_grad(np.zeros(self.n_params))
-            logger.info("Circuit JIT compiled")
-        time2 = time()
-        if with_time:
-            return energy_and_grad, time2 - time1
-        return energy_and_grad
-
     def _check_params_argument(self, params, strict=True):
         if params is None:
             if self.params is not None:
@@ -708,58 +635,6 @@ class UCC:
         )
         return float(e) + self.e_core
 
-    def energy_and_grad(self, params: Tensor = None, engine: str = None) -> Tuple[float, Tensor]:
-        """
-        Evaluate the total energy and parameter gradients.
-
-        Parameters
-        ----------
-        params: Tensor, optional
-            The circuit parameters. Defaults to None, which uses the optimized parameter
-            and :func:`kernel` must be called before.
-        engine: str, optional
-            The engine to use. Defaults to ``None``, which uses ``self.engine``.
-
-        Returns
-        -------
-        energy: float
-            Total energy
-        grad: Tensor
-            The parameter gradients
-
-        See Also
-        --------
-        civector: Get the configuration interaction (CI) vector.
-        statevector: Evaluate the circuit state vector.
-        energy: Evaluate the total energy.
-
-        Examples
-        --------
-        >>> from tencirchem import UCCSD
-        >>> from tencirchem.molecule import h2
-        >>> uccsd = UCCSD(h2)
-        >>> e, g = uccsd.energy_and_grad([0, 0])
-        >>> round(e, 8)
-        -1.11670614
-        >>> g  # doctest:+ELLIPSIS
-        array([..., ...])
-        """
-        self._sanity_check()
-        params = self._check_params_argument(params)
-        hamiltonian, _, engine = self._get_hamiltonian_and_core(engine)
-        e, g = get_energy_and_grad(
-            params,
-            hamiltonian,
-            self.n_qubits,
-            self.n_elec_s,
-            self.ex_ops,
-            self.param_ids,
-            self.hcb,
-            self.init_state,
-            engine,
-        )
-        return float(e + self.e_core), tc.backend.numpy(g)
-
     def apply_excitation(self, state: Tensor, ex_op: Tuple, engine: str = None) -> Tensor:
         """
         Apply a given excitation operator to a given state.
@@ -805,136 +680,6 @@ class UCC:
 
         civector = tc.backend.numpy(tc.backend.convert_to_tensor(civector))
         return civector
-
-    def make_rdm1(self, statevector: Tensor = None, basis: str = "AO") -> np.ndarray:
-        r"""
-        Evaluate the spin-traced one-body reduced density matrix (1RDM).
-
-        .. math::
-
-            \textrm{1RDM}[p,q] = \langle p_{\alpha}^\dagger q_{\alpha} \rangle
-                + \langle p_{\beta}^\dagger q_{\beta} \rangle
-
-        If active space approximation is employed, returns the full RDM of all orbitals.
-
-        Parameters
-        ----------
-        statevector: Tensor, optional
-            Custom system state. Could be CI vector or state vector.
-            Defaults to None, which uses the optimized state by :func:`civector`.
-
-        basis: str, optional
-            One of ``"AO"`` or ``"MO"``. Defaults to ``"AO"``, which is for consistency with PySCF.
-
-        Returns
-        -------
-        rdm1: np.ndarray
-            The spin-traced one-body RDM.
-
-        See Also
-        --------
-        make_rdm2: Evaluate the spin-traced two-body reduced density matrix (2RDM).
-        """
-        assert not self.hcb
-        civector = self._statevector_to_civector(statevector).astype(np.float64)
-
-        rdm1_cas = fci.direct_spin1.make_rdm1(civector, self.n_qubits // 2, self.n_elec_s)
-
-        rdm1 = self.embed_rdm_cas(rdm1_cas)
-
-        if basis == "MO":
-            return rdm1
-        else:
-            return rdm_mo2ao(rdm1, self.hf.mo_coeff)
-
-    def make_rdm2(self, statevector: Tensor = None, basis: str = "AO") -> np.ndarray:
-        r"""
-        Evaluate the spin-traced two-body reduced density matrix (2RDM).
-
-        .. math::
-
-            \begin{aligned}
-                \textrm{2RDM}[p,q,r,s] & = \langle p_{\alpha}^\dagger r_{\alpha}^\dagger
-                s_{\alpha}  q_{\alpha} \rangle
-                   + \langle p_{\beta}^\dagger r_{\alpha}^\dagger s_{\alpha}  q_{\beta} \rangle \\
-                   & \quad + \langle p_{\alpha}^\dagger r_{\beta}^\dagger s_{\beta}  q_{\alpha} \rangle
-                   + \langle p_{\beta}^\dagger r_{\beta}^\dagger s_{\beta}  q_{\beta} \rangle
-            \end{aligned}
-
-        If active space approximation is employed, returns the full RDM of all orbitals.
-
-        Parameters
-        ----------
-        statevector: Tensor, optional
-            Custom system state. Could be CI vector or state vector.
-            Defaults to None, which uses the optimized state by :func:`civector`.
-
-        basis: str, optional
-            One of ``"AO"`` or ``"MO"``. Defaults to ``"AO"``, which is for consistency with PySCF.
-
-        Returns
-        -------
-        rdm2: np.ndarray
-            The spin-traced two-body RDM.
-
-        See Also
-        --------
-        make_rdm1: Evaluate the spin-traced one-body reduced density matrix (1RDM).
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> from tencirchem import UCC
-        >>> from tencirchem.molecule import h2
-        >>> ucc = UCC(h2)
-        >>> state = [1, 0, 0, 0]  ## HF state
-        >>> rdm1 = ucc.make_rdm1(state, basis="MO")
-        >>> rdm2 = ucc.make_rdm2(state, basis="MO")
-        >>> e_hf = ucc.int1e.ravel() @ rdm1.ravel() + 1/2 * ucc.int2e.ravel() @ rdm2.ravel()
-        >>> np.testing.assert_allclose(e_hf + ucc.e_nuc, ucc.e_hf, atol=1e-10)
-        """
-        assert not self.hcb
-        civector = self._statevector_to_civector(statevector).astype(np.float64)
-
-        rdm2_cas = fci.direct_spin1.make_rdm12(civector.astype(np.float64), self.n_qubits // 2, self.n_elec_s)[1]
-
-        rdm2 = self.embed_rdm_cas(rdm2_cas)
-
-        if basis == "MO":
-            return rdm2
-        else:
-            return rdm_mo2ao(rdm2, self.hf.mo_coeff)
-
-    def embed_rdm_cas(self, rdm_cas):
-        """
-        Embed CAS RDM into RDM of the whole system
-        """
-        if self.inactive_occ == 0 and self.inactive_vir == 0:
-            # active space approximation not employed
-            return rdm_cas
-        # slice of indices in rdm corresponding to cas
-        slice_cas = slice(self.inactive_occ, self.inactive_occ + len(rdm_cas))
-        if rdm_cas.ndim == 2:
-            rdm1_cas = rdm_cas
-            rdm1 = np.zeros((self.mol.nao, self.mol.nao))
-            for i in range(self.inactive_occ):
-                rdm1[i, i] = 2
-            rdm1[slice_cas, slice_cas] = rdm1_cas
-            return rdm1
-        else:
-            rdm2_cas = rdm_cas
-            # active space approximation employed
-            rdm1 = self.make_rdm1(basis="MO")
-            rdm1_cas = rdm1[slice_cas, slice_cas]
-            rdm2 = np.zeros((self.mol.nao, self.mol.nao, self.mol.nao, self.mol.nao))
-            rdm2[slice_cas, slice_cas, slice_cas, slice_cas] = rdm2_cas
-            for i in range(self.inactive_occ):
-                for j in range(self.inactive_occ):
-                    rdm2[i, i, j, j] += 4
-                    rdm2[i, j, j, i] -= 2
-                rdm2[i, i, slice_cas, slice_cas] = rdm2[slice_cas, slice_cas, i, i] = 2 * rdm1_cas
-                rdm2[i, slice_cas, slice_cas, i] = rdm2[slice_cas, i, i, slice_cas] = -rdm1_cas
-            return rdm2
 
     def get_ex_ops(self, t1: np.ndarray = None, t2: np.ndarray = None):
         """Virtual method to be implemented"""
@@ -1103,58 +848,6 @@ class UCC:
             df_dict["initial condition"] = "custom"
         print(pd.DataFrame(df_dict).to_string(index=False))
 
-    def get_circuit(
-        self, params: Tensor = None, decompose_multicontrol: bool = False, trotter: bool = False
-    ) -> tc.Circuit:
-        """
-        Get the circuit as TensorCircuit ``Circuit`` object
-
-        Parameters
-        ----------
-        params: Tensor, optional
-            The circuit parameters. Defaults to None, which uses the optimized parameter.
-            If :func:`kernel` is not called before, the initial guess is used.
-        decompose_multicontrol: bool, optional
-            Whether decompose the Multicontrol gate in the circuit into CNOT gates.
-            Defaults to False.
-        trotter: bool, optional
-            Whether Trotterize the UCC factor into Pauli strings.
-            Defaults to False.
-
-        Returns
-        -------
-        circuit: :class:`tc.Circuit`
-            The quantum circuit.
-        """
-        if self.ex_ops is None:
-            raise ValueError("Excitation operators not defined")
-        params = self._check_params_argument(params, strict=False)
-        return get_circuit(
-            params,
-            self.n_qubits,
-            self.n_elec_s,
-            self.ex_ops,
-            self.param_ids,
-            self.hcb,
-            self.init_state,
-            decompose_multicontrol=decompose_multicontrol,
-            trotter=trotter,
-        )
-
-    def print_circuit(self):
-        """
-        Prints the circuit information. If you wish to print the circuit diagram,
-        use :func:`get_circuit` and then call ``draw()`` such as ``print(ucc.get_circuit().draw())``.
-        """
-        c = self.get_circuit()
-        df = get_circuit_dataframe(c)
-
-        def format_flop(f):
-            return f"{f:.3e}"
-
-        formatters = {"flop": format_flop}
-        print(df.to_string(index=False, formatters=formatters))
-
     def get_init_state_dataframe(self, coeff_epsilon: float = DISCARD_EPS) -> pd.DataFrame:
         """
         Returns initial state information dataframe.
@@ -1262,14 +955,9 @@ class UCC:
         formatters = {"correlation energy (%)": format_ce}
         print(df.to_string(index=True, formatters=formatters))
 
-    def print_summary(self, include_circuit: bool = False):
+    def print_summary(self):
         """
         Print a summary of the class.
-
-        Parameters
-        ----------
-        include_circuit: bool
-            Whether include the circuit section.
 
         """
         print("################################ Ansatz ###############################")
@@ -1277,9 +965,6 @@ class UCC:
         if self.init_state is not None:
             print("############################ Initial Condition ########################")
             self.print_init_state()
-        if include_circuit:
-            print("############################### Circuit ###############################")
-            self.print_circuit()
         print("############################### Energy ################################")
         self.print_energy()
         print("############################# Excitations #############################")

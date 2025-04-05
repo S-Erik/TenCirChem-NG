@@ -76,30 +76,6 @@ def format_ex_op(ex_op: Tuple) -> str:
         return f"{ex_op[0]}^ {ex_op[1]}^ {ex_op[2]} {ex_op[3]}"
 
 
-def scipy_opt_wrap(f, gradient=True):
-    @wraps(f)
-    def _wrap_scipy_opt(_params, *args):
-        # scipy assumes 64bit https://github.com/scipy/scipy/issues/5832
-        res = f(tc.backend.convert_to_tensor(_params), *args)
-        if gradient:
-            return [np.asarray(tc.backend.numpy(v), dtype=np.float64) for v in res]
-        else:
-            return np.asarray(tc.backend.numpy(res), dtype=np.float64)
-
-    return _wrap_scipy_opt
-
-
-def rdm_mo2ao(rdm: np.ndarray, mo_coeff: np.ndarray):
-    c = mo_coeff
-    if rdm.ndim == 2:
-        return c @ rdm @ c.T
-    else:
-        assert rdm.ndim == 4
-        for _ in range(4):
-            rdm = np.tensordot(rdm, c.T, axes=1).transpose(3, 0, 1, 2)
-        return rdm
-
-
 def canonical_mo_coeff(mo_coeff: np.ndarray):
     # make the first large element positive
     # all elements smaller than 1e-5 is highly unlikely (at least 1e10 basis)
@@ -127,10 +103,6 @@ def ex_op_to_fop(ex_op, with_conjugation=False):
     if with_conjugation:
         fop = fop - hermitian_conjugated(fop)
     return fop
-
-
-def get_dense_operator(basis: List[BasisSet], terms: List[Op]):
-    return Mpo(Model(basis, []), terms).todense()
 
 
 def unpack_nelec(n_elec_s):
