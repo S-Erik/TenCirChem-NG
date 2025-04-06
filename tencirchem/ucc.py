@@ -4,7 +4,6 @@
 #  and WITHOUT ANY WARRANTY. See the LICENSE file for details.
 
 
-from functools import partial
 from itertools import product
 from collections import defaultdict
 from time import time
@@ -25,7 +24,7 @@ from tencirchem.engine_ucc import (
     apply_excitation,
     translate_init_state,
 )
-from tencirchem.hamiltonian import get_h_from_integral
+from tencirchem.hamiltonian import get_h_fcifunc_from_integral
 from tencirchem.ci_utils import get_ci_strings, get_ex_bitstring, get_addr, get_init_civector
 
 
@@ -191,7 +190,7 @@ class UCC:
         self.e_nuc = e_core
 
         # Hamiltonian related
-        self.hamiltonian_lib = {}
+        self.hamiltonian_lib = None
         # e_core includes nuclear repulsion energy
         self.hamiltonian, self.e_core, _ = self._get_hamiltonian_and_core(self.engine)
 
@@ -394,19 +393,17 @@ class UCC:
             hamiltonian = self.hamiltonian
             e_core = self.e_core
         else:
-            if engine.startswith("civector") or engine == "pyscf":
-                htype = "fcifunc"
-            else:
+            if not (engine.startswith("civector") or engine == "pyscf"):
                 assert engine in ["tensornetwork", "statevector"]
-                htype = "sparse"
-            hamiltonian = self.hamiltonian_lib.get(htype)
+                raise ValueError("tensornetwork and statevector engines not supported!")
+            hamiltonian = self.hamiltonian_lib
             if hamiltonian is None:
                 if self.int1e is None:
                     raise ValueError("One-electron integrals need to be provided but are not!")
                 else:
                     e_core = self.e_core
-                hamiltonian = get_h_from_integral(self.int1e, self.int2e, self.n_elec_s, htype)
-                self.hamiltonian_lib[htype] = hamiltonian
+                hamiltonian = get_h_fcifunc_from_integral(self.int1e, self.int2e, self.n_elec_s)
+                self.hamiltonian_lib = hamiltonian
             else:
                 e_core = self.e_core
         return hamiltonian, e_core, engine

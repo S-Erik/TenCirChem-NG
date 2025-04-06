@@ -7,4 +7,4 @@ tensorcircuit-ng[qiskit]
 openfermion
 pylatexenc
 noisyopt
-renormalizer==0.0.11
+# renormalizer==0.0.11

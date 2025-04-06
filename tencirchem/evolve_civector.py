@@ -5,14 +5,12 @@
 
 
 import logging
-from typing import Tuple
 
 import numpy as np
 from openfermion import jordan_wigner
 
 from tencirchem import rdtypestr, uint_type
 from tencirchem.misc import ex_op_to_fop
-from tencirchem.hamiltonian import apply_op
 from tencirchem.ci_utils import get_ci_strings, get_addr, get_init_civector
 
 

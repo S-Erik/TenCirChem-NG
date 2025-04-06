@@ -41,15 +41,10 @@ else:
 from pyscf import M
 
 from tencirchem import hamiltonian
-import tencirchem.ucc_all_in_one as ucc_all_in_one
+import tencirchem.ucc as ucc
 
 # from tencirchem.static.ucc import UCC
 # from tencirchem.static.uccsd import UCCSD, ROUCCSD
-
-# dynamic module
-# as an external interface
-from renormalizer import Op, BasisSHO, BasisHalfSpin, BasisSimpleElectron, BasisMultiElectron, Model, Mpo
-from renormalizer.model import OpSum
 
 
 def clear_cache():

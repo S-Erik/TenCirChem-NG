@@ -16,7 +16,7 @@ kwargs = {
     "run_ccsd": False,
     "run_fci": False,
 }
-tcc_uccsd = tcc.ucc_all_in_one.UCC.from_integral(h1e, h2e, nelec, ecore, **kwargs)
+tcc_uccsd = tcc.ucc.UCC.from_integral(h1e, h2e, nelec, ecore, **kwargs)
 tcc_uccsd.param_ids = None
 
 single_ex = get_ex1_ops(norb, nelec)
