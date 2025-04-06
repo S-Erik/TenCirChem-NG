@@ -17,15 +17,12 @@ kwargs = {
     "run_fci": False,
 }
 tcc_uccsd = tcc.ucc.UCC.from_integral(h1e, h2e, nelec, ecore, **kwargs)
-tcc_uccsd.param_ids = None
 
 single_ex = get_ex1_ops(norb, nelec)
 double_ex = get_ex2_ops(norb, nelec)
 tcc_uccsd.ex_ops = double_ex + single_ex
 
 print(tcc_uccsd.ex_ops)
-print(tcc_uccsd.param_ids)
-print(tcc_uccsd.param_to_ex_ops)
 print(tcc_uccsd.n_params)
 
 params = np.random.randn(tcc_uccsd.n_params)

@@ -139,17 +139,6 @@ def get_operator_tensors(n_qubits, n_elec_s, ex_ops):
     return ret
 
 
-def get_theta_tensors(params, param_ids):
-    theta_list = []
-    for param_id in param_ids:
-        theta_list.append(params[param_id])
-
-    theta_tensor = np.asarray(theta_list)
-    theta_sin_tensor = np.sin(theta_tensor)
-    theta_1mcos_tensor = 1 - np.cos(theta_tensor)
-    return theta_sin_tensor, theta_1mcos_tensor
-
-
 def evolve_civector_by_tensor(
     civector, fket_permutation_tensor, fket_phase_tensor, f2ket_phase_tensor, theta_sin, theta_1mcos
 ):
@@ -167,11 +156,13 @@ def evolve_civector_by_tensor(
     return val
 
 
-def get_civector(params, n_qubits, n_elec_s, ex_ops, param_ids, init_state=None):
+def get_civector(params, n_qubits, n_elec_s, ex_ops, init_state=None):
     ci_strings, fket_permutation_tensor, fket_phase_tensor, f2ket_phase_tensor = get_operator_tensors(
         n_qubits, n_elec_s, ex_ops
     )
-    theta_sin, theta_1mcos = get_theta_tensors(params, param_ids)
+    theta_tensor = np.asarray(params)
+    theta_sin = np.sin(theta_tensor)
+    theta_1mcos = 1 - np.cos(theta_tensor)
 
     if init_state is None:
         civector = get_init_civector(len(ci_strings))

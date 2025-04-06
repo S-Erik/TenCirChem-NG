@@ -14,6 +14,7 @@ import numpy as np
 from scipy.special import comb
 import pandas as pd
 from pyscf.cc.addons import spatial2spin
+from pyscf.fci import direct_nosym
 
 from tencirchem import rdtypestr
 from tencirchem.constants import DISCARD_EPS
@@ -24,9 +25,10 @@ from tencirchem.engine_ucc import (
     apply_excitation,
     translate_init_state,
 )
-from tencirchem.hamiltonian import get_h_fcifunc_from_integral
 from tencirchem.ci_utils import get_ci_strings, get_ex_bitstring, get_addr, get_init_civector
-
+from tencirchem.evolve_civector import get_civector_nocache
+from tencirchem.evolve_civector import get_civector as get_civector_
+from tencirchem.hamiltonian import apply_op
 
 logger = logging.getLogger(__name__)
 
@@ -187,12 +189,7 @@ class UCC:
                 engine = "civector-large"
         self.engine = engine
 
-        self.e_nuc = e_core
-
-        # Hamiltonian related
-        self.hamiltonian_lib = None
-        # e_core includes nuclear repulsion energy
-        self.hamiltonian, self.e_core, _ = self._get_hamiltonian_and_core(self.engine)
+        self.e_core = e_core
 
         # initial guess
         self.t1 = np.zeros([self.no, self.nv])
@@ -205,7 +202,7 @@ class UCC:
 
         # circuit related
         self._init_state = None
-        self.ex_ops = None
+        self.ex_ops = []
         self._param_ids = None
         self.init_guess = None
         # for manually set
@@ -229,17 +226,13 @@ class UCC:
         return np.asarray(params).astype(rdtypestr)
 
     def _check_engine(self, engine):
-        supported_engine = [None, "tensornetwork", "statevector", "civector", "civector-large", "pyscf"]
+        supported_engine = ["civector"]
         if not engine in supported_engine:
             raise ValueError(f"Engine '{engine}' not supported")
 
     def _sanity_check(self):
-        if self.ex_ops is None or self.param_ids is None:
+        if self.ex_ops is None:
             raise ValueError("`ex_ops` or `param_ids` not defined")
-        if self.param_ids is not None and (len(self.ex_ops) != len(self.param_ids)):
-            raise ValueError(
-                f"Excitation operator size {len(self.ex_ops)} and parameter size {len(self.param_ids)} do not match"
-            )
 
     def civector(self, params: Tensor = None, engine: str | None = None) -> Tensor:
         """
@@ -386,28 +379,6 @@ class UCC:
         )
         return statevector
 
-    def _get_hamiltonian_and_core(self, engine):
-        self._check_engine(engine)
-        if engine is None:
-            engine = self.engine
-            hamiltonian = self.hamiltonian
-            e_core = self.e_core
-        else:
-            if not (engine.startswith("civector") or engine == "pyscf"):
-                assert engine in ["tensornetwork", "statevector"]
-                raise ValueError("tensornetwork and statevector engines not supported!")
-            hamiltonian = self.hamiltonian_lib
-            if hamiltonian is None:
-                if self.int1e is None:
-                    raise ValueError("One-electron integrals need to be provided but are not!")
-                else:
-                    e_core = self.e_core
-                hamiltonian = get_h_fcifunc_from_integral(self.int1e, self.int2e, self.n_elec_s)
-                self.hamiltonian_lib = hamiltonian
-            else:
-                e_core = self.e_core
-        return hamiltonian, e_core, engine
-
     def energy(self, params: Tensor = None, engine: str | None = None) -> float:
         """
         Evaluate the total energy.
@@ -438,19 +409,25 @@ class UCC:
         >>> round(uccsd.energy([0, 0]), 8)  # HF state
         -1.11670614
         """
+        if engine is None:
+            engine = self.engine
         self._sanity_check()
         params = self._check_params_argument(params)
-        hamiltonian, _, engine = self._get_hamiltonian_and_core(engine)
-        e = get_energy(
-            params,
-            hamiltonian,
-            self.n_qubits,
-            self.n_elec_s,
-            self.ex_ops,
-            self.param_ids,
-            self.init_state,
-            engine,
-        )
+        n_orb = len(self.int1e)
+
+        h2e = direct_nosym.absorb_h1e(self.int1e, self.int2e, n_orb, self.n_elec_s, 0.5)  # type: ignore
+
+        def fci_func(civector):
+            civector = np.asarray(civector).astype(np.float64)
+            civector = direct_nosym.contract_2e(h2e, civector, norb=n_orb, nelec=self.n_elec_s)
+            return np.asarray(civector).astype(rdtypestr)
+
+        ci_strings = get_ci_strings(self.n_qubits, self.n_elec_s)
+        init_state = translate_init_state(self.init_state, self.n_qubits, ci_strings)
+        ket = get_civector_(params, self.n_qubits, self.n_elec_s, tuple(self.ex_ops), init_state=init_state)
+        hket = fci_func(ket)
+        e = ket @ hket
+
         return float(e) + self.e_core
 
     def apply_excitation(self, state: Tensor, ex_op: Tuple, engine: str | None = None) -> Tensor:
@@ -498,154 +475,6 @@ class UCC:
 
         civector = np.asarray(civector)
         return civector
-
-    def get_ex_ops(self, t1: np.ndarray | None = None, t2: np.ndarray | None = None):
-        """Virtual method to be implemented"""
-        raise NotImplementedError
-
-    def get_ex1_ops(self, t1: np.ndarray | None = None) -> Tuple[List[Tuple], List[int], List[float]]:
-        """
-        Get one-body excitation operators.
-
-        Parameters
-        ----------
-        t1: np.ndarray, optional
-            Initial one-body amplitudes based on e.g. CCSD
-
-        Returns
-        -------
-        ex_op: List[Tuple]
-            The excitation operators. Each operator is represented by a tuple of ints.
-        param_ids: List[int]
-            The mapping from excitations to parameters.
-        init_guess: List[float]
-            The initial guess for the parameters.
-
-        See Also
-        --------
-        get_ex2_ops: Get two-body excitation operators.
-        get_ex_ops: Get one-body and two-body excitation operators for UCCSD ansatz.
-        """
-        # single excitations
-        no, nv = self.no, self.nv
-        if t1 is None:
-            t1 = self.t1
-
-        if t1.shape == (self.no, self.nv):
-            t1 = spatial2spin(t1)
-        else:
-            assert t1.shape == (2 * self.no, 2 * self.nv)
-
-        ex1_ops = []
-        # unique parameters. -1 is a place holder
-        ex1_param_ids = [-1]
-        ex1_init_guess = []
-        for i in range(no):
-            for a in range(nv):
-                # alpha to alpha
-                ex_op_a = (2 * no + nv + a, no + nv + i)
-                # beta to beta
-                ex_op_b = (no + a, i)
-                ex1_ops.extend([ex_op_a, ex_op_b])
-                ex1_param_ids.extend([ex1_param_ids[-1] + 1] * 2)
-                ex1_init_guess.append(t1[i, a])
-
-        return ex1_ops, ex1_param_ids[1:], ex1_init_guess
-
-    def get_ex2_ops(self, t2: np.ndarray | None = None) -> Tuple[List[Tuple], List[int], List[float]]:
-        """
-        Get two-body excitation operators.
-
-        Parameters
-        ----------
-        t2: np.ndarray, optional
-            Initial two-body amplitudes based on e.g. MP2
-
-        Returns
-        -------
-        ex_op: List[Tuple]
-            The excitation operators. Each operator is represented by a tuple of ints.
-        param_ids: List[int]
-            The mapping from excitations to parameters.
-        init_guess: List[float]
-            The initial guess for the parameters.
-
-        See Also
-        --------
-        get_ex1_ops: Get one-body excitation operators.
-        get_ex_ops: Get one-body and two-body excitation operators for UCCSD ansatz.
-        """
-
-        # t2 in oovv 1212 format
-        no, nv = self.no, self.nv
-        if t2 is None:
-            t2 = self.t2
-
-        if t2.shape == (self.no, self.no, self.nv, self.nv):
-            t2 = spatial2spin(t2)
-        else:
-            assert t2.shape == (2 * self.no, 2 * self.no, 2 * self.nv, 2 * self.nv)
-
-        def alpha_o(_i):
-            return no + nv + _i
-
-        def alpha_v(_i):
-            return 2 * no + nv + _i
-
-        def beta_o(_i):
-            return _i
-
-        def beta_v(_i):
-            return no + _i
-
-        # double excitations
-        ex_ops = []
-        ex2_param_ids = [-1]
-        ex2_init_guess = []
-        # 2 alphas or 2 betas
-        for i in range(no):
-            for j in range(i):
-                for a in range(nv):
-                    for b in range(a):
-                        # i correspond to a and j correspond to b, as in PySCF convention
-                        # otherwise the t2 amplitude has incorrect phase
-                        # 2 alphas
-                        ex_op_aa = (alpha_v(b), alpha_v(a), alpha_o(i), alpha_o(j))
-                        # 2 betas
-                        ex_op_bb = (beta_v(b), beta_v(a), beta_o(i), beta_o(j))
-                        ex_ops.extend([ex_op_aa, ex_op_bb])
-                        ex2_param_ids.extend([ex2_param_ids[-1] + 1] * 2)
-                        ex2_init_guess.append(t2[2 * i, 2 * j, 2 * a, 2 * b])
-        assert len(ex_ops) == 2 * (no * (no - 1) / 2) * (nv * (nv - 1) / 2)
-        # 1 alpha + 1 beta
-        for i in range(no):
-            for j in range(i + 1):
-                for a in range(nv):
-                    for b in range(a + 1):
-                        # i correspond to a and j correspond to b, as in PySCF convention
-                        # otherwise the t2 amplitude has incorrect phase
-                        if i == j and a == b:
-                            # paired
-                            ex_op_ab = (beta_v(a), alpha_v(a), alpha_o(i), beta_o(i))
-                            ex_ops.append(ex_op_ab)
-                            ex2_param_ids.append(ex2_param_ids[-1] + 1)
-                            ex2_init_guess.append(t2[2 * i, 2 * i + 1, 2 * a, 2 * a + 1])
-                            continue
-                        # simple reflection
-                        ex_op_ab1 = (beta_v(b), alpha_v(a), alpha_o(i), beta_o(j))
-                        ex_op_ab2 = (alpha_v(b), beta_v(a), beta_o(i), alpha_o(j))
-                        ex_ops.extend([ex_op_ab1, ex_op_ab2])
-                        ex2_param_ids.extend([ex2_param_ids[-1] + 1] * 2)
-                        ex2_init_guess.append(t2[2 * i, 2 * j + 1, 2 * a, 2 * b + 1])
-                        if (i != j) and (a != b):
-                            # exchange alpha and beta
-                            ex_op_ab3 = (beta_v(a), alpha_v(b), alpha_o(i), beta_o(j))
-                            ex_op_ab4 = (alpha_v(a), beta_v(b), beta_o(i), alpha_o(j))
-                            ex_ops.extend([ex_op_ab3, ex_op_ab4])
-                            ex2_param_ids.extend([ex2_param_ids[-1] + 1] * 2)
-                            ex2_init_guess.append(t2[2 * i, 2 * j + 1, 2 * b, 2 * a + 1])
-
-        return ex_ops, ex2_param_ids[1:], ex2_init_guess
 
     @property
     def e_ucc(self) -> float:
@@ -711,74 +540,6 @@ class UCC:
             data_list.append((ci_string, coeff))
         return pd.DataFrame(data_list, columns=columns)
 
-    def print_init_state(self):
-        print(self.get_init_state_dataframe().to_string())
-
-    def get_excitation_dataframe(self) -> pd.DataFrame:
-        columns = ["excitation", "configuration", "parameter", "initial guess"]
-        if self.ex_ops is None:
-            return pd.DataFrame(columns=columns)
-
-        if self.params is None:
-            # optimization not done
-            params = [None] * len(self.init_guess)
-        else:
-            params = self.params
-
-        if self.param_ids is None:
-            # see self.n_params
-            param_ids = range(len(self.ex_ops))
-        else:
-            param_ids = self.param_ids
-
-        data_list = []
-
-        for i, ex_op in zip(param_ids, self.ex_ops):
-            bitstring = get_ex_bitstring(self.n_qubits, self.n_elec_s, ex_op)
-            data_list.append((ex_op, bitstring, params[i], self.init_guess[i]))
-        return pd.DataFrame(data_list, columns=columns)
-
-    def print_excitations(self):
-        print(self.get_excitation_dataframe().to_string())
-
-    def get_energy_dataframe(self) -> pd.DataFrame:
-        """
-        Returns energy information dataframe
-        """
-        ucc_name = self.__class__.__name__
-        series_dict = {
-            ucc_name: self.energy(),
-        }
-        df = pd.DataFrame()
-        energy = pd.Series(series_dict)
-        df["energy (Hartree)"] = energy
-        return df
-
-    def print_energy(self):
-        df = self.get_energy_dataframe()
-
-        def format_ce(f):
-            return f"{f:.3f}"
-
-        formatters = {"correlation energy (%)": format_ce}
-        print(df.to_string(index=True, formatters=formatters))
-
-    def print_summary(self):
-        """
-        Print a summary of the class.
-
-        """
-        print("################################ Ansatz ###############################")
-        self.print_ansatz()
-        if self.init_state is not None:
-            print("############################ Initial Condition ########################")
-            self.print_init_state()
-        print("############################### Energy ################################")
-        self.print_energy()
-        print("############################# Excitations #############################")
-        self.print_excitations()
-        print("######################### Optimization Result #########################")
-
     @property
     def n_elec_s(self):
         """The number of electrons for alpha and beta spin"""
@@ -797,10 +558,7 @@ class UCC:
     @property
     def n_params(self) -> int:
         """The number of parameter in the ansatz/circuit."""
-        # this definition ensures that `param[param_id]` is always valid
-        if not self.param_ids:
-            return 0
-        return max(self.param_ids) + 1
+        return len(self.ex_ops)
 
     @property
     def statevector_size(self) -> int:
@@ -840,27 +598,6 @@ class UCC:
     @params.setter
     def params(self, params):
         self._params = params
-
-    @property
-    def param_ids(self) -> List[int]:
-        """The mapping from excitations operators to parameters."""
-        if self._param_ids is None:
-            if self.ex_ops is None:
-                raise ValueError("Excitation operators not defined")
-            else:
-                return tuple(range(len(self.ex_ops)))
-        return self._param_ids
-
-    @param_ids.setter
-    def param_ids(self, v):
-        self._param_ids = v
-
-    @property
-    def param_to_ex_ops(self):
-        d = defaultdict(list)
-        for i, j in enumerate(self.param_ids):
-            d[j].append(self.ex_ops[i])
-        return d
 
 
 def compute_fe_t2(no, nv, int1e, int2e):
