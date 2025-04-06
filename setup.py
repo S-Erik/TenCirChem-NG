@@ -27,9 +27,7 @@ setuptools.setup(
         "noisyopt",
         "renormalizer",
     ],
-    extras_require={
-        "jax": ["jax", "jaxlib"],
-    },
+    extras_require={},
     classifiers=[
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",

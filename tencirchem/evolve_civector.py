@@ -4,7 +4,6 @@
 #  and WITHOUT ANY WARRANTY. See the LICENSE file for details.
 
 
-from functools import partial
 import logging
 from typing import Tuple
 
@@ -210,41 +209,6 @@ def get_civector_nocache(params, n_qubits, n_elec_s, ex_ops, param_ids, init_sta
         )
 
     return civector.reshape(-1)
-
-
-def get_energy_and_grad_civector_nocache(
-    params, hamiltonian, n_qubits, n_elec_s, ex_ops: Tuple, param_ids: Tuple, init_state=None
-):
-    ket = get_civector_nocache(params, n_qubits, n_elec_s, ex_ops, param_ids, init_state)
-    bra = apply_op(hamiltonian, ket)
-    energy = bra @ ket
-
-    gradients_beforesum = _get_gradients_civector_nocache(bra, ket, params, n_qubits, n_elec_s, ex_ops, param_ids)
-    gradients_beforesum = np.asarray(gradients_beforesum)
-
-    gradients = np.zeros(params.shape)
-    for grad, param_id in zip(gradients_beforesum, param_ids):
-        gradients[param_id] += grad
-
-    return energy, 2 * gradients
-
-
-def _get_gradients_civector_nocache(bra, ket, params, n_qubits, n_elec_s, ex_ops, param_ids):
-    ci_strings, strs2addr = get_ci_strings(n_qubits, n_elec_s, True)
-    theta_sin_tensor, theta_1mcos_tensor = get_theta_tensors(params, param_ids)
-
-    gradients_beforesum = []
-    for theta_sin, theta_1mcos, f_idx in reversed(list(zip(theta_sin_tensor, theta_1mcos_tensor, ex_ops))):
-        fket_permutation, fket_phase, f2ket_phase = get_operators(n_qubits, n_elec_s, strs2addr, f_idx, ci_strings)
-        bra = evolve_excitation_nocache(bra, fket_permutation, fket_phase, f2ket_phase, theta_1mcos, -theta_sin)
-        ket = evolve_excitation_nocache(ket, fket_permutation, fket_phase, f2ket_phase, theta_1mcos, -theta_sin)
-        fket = ket[fket_permutation] * fket_phase
-        grad = bra @ fket
-        gradients_beforesum.append(grad)
-    gradients_beforesum = list(reversed(gradients_beforesum))
-    gradients_beforesum = np.asarray(gradients_beforesum)
-
-    return gradients_beforesum
 
 
 def apply_excitation_civector(civector, n_qubits, n_elec_s, f_idx):

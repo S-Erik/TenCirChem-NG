@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
-
-import tencirchem as tcc
-
 
 def get_ex1_ops(norb, nelec) -> list[tuple[int, int]]:
     """Get one-body excitation operators.

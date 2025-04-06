@@ -1,8 +1,6 @@
 numpy
 scipy
 pandas
-jax
-jaxlib
 flax
 pyscf
 tensorcircuit-ng[qiskit]

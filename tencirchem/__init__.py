@@ -11,7 +11,6 @@ import os
 import logging
 import numpy as np
 
-os.environ["JAX_ENABLE_X64"] = "True"
 # for debugging
 # os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 

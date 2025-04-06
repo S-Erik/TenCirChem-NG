@@ -263,7 +263,6 @@ class UCC:
         --------
         statevector: Evaluate the circuit state vector.
         energy: Evaluate the total energy.
-        energy_and_grad: Evaluate the total energy and parameter gradients.
 
         Examples
         --------
@@ -369,7 +368,6 @@ class UCC:
         --------
         civector: Evaluate the configuration interaction (CI) vector.
         energy: Evaluate the total energy.
-        energy_and_grad: Evaluate the total energy and parameter gradients.
 
         Examples
         --------
@@ -434,7 +432,6 @@ class UCC:
         --------
         civector: Get the configuration interaction (CI) vector.
         statevector: Evaluate the circuit state vector.
-        energy_and_grad: Evaluate the total energy and parameter gradients.
 
         Examples
         --------
