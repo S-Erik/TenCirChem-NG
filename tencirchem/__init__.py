@@ -9,6 +9,7 @@ __creator__ = "Weitang Li"
 
 import os
 import logging
+import numpy as np
 
 os.environ["JAX_ENABLE_X64"] = "True"
 # for debugging
@@ -28,11 +29,13 @@ logger.setLevel(logging.WARNING)
 # finish logger stuff
 del logger
 
-from tencirchem.backend import set_backend, set_dtype
-
 # by default use float64 rather than float32
-set_dtype("complex128")
 rdtypestr = "float64"
+if rdtypestr == "float64":
+    uint_type = np.uint64
+else:
+    assert rdtypestr == "float32"
+    uint_type = np.uint32
 
 # static module
 # as an external interface
@@ -51,10 +54,7 @@ from renormalizer.model import OpSum
 
 
 def clear_cache():
-    from tencirchem.backend import ALL_JIT_LIBS
     from .evolve_civector import CI_OPERATOR_CACHE, CI_OPERATOR_BATCH_CACHE
 
-    for l in ALL_JIT_LIBS:
-        l.clear()
     CI_OPERATOR_CACHE.clear()
     CI_OPERATOR_BATCH_CACHE.clear()

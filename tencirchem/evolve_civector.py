@@ -11,8 +11,7 @@ from typing import Tuple
 import numpy as np
 from openfermion import jordan_wigner
 
-from tencirchem import rdtypestr
-from tencirchem.backend import jit, fori_loop, scan, get_uint_type
+from tencirchem import rdtypestr, uint_type
 from tencirchem.misc import ex_op_to_fop
 from tencirchem.hamiltonian import apply_op
 from tencirchem.ci_utils import get_ci_strings, get_addr, get_init_civector
@@ -63,7 +62,7 @@ def get_fermion_phase(f_idx, n_qubits, ci_strings):
                 assert idx in f_idx
                 continue
             mask_str[n_qubits - 1 - idx] = "1"
-        mask = get_uint_type()(int("".join(mask_str), base=2))
+        mask = uint_type(int("".join(mask_str), base=2))
 
         if sorted(qop.terms.items())[0][1].real > 0:
             sign = -1
@@ -109,7 +108,6 @@ CI_OPERATOR_BATCH_CACHE = {}
 CI_OPERATOR_CACHE = {}
 
 
-@partial(jit, static_argnums=[0, 1, 2, 3])
 def get_operator_tensors(n_qubits, n_elec_s, ex_ops):
     xp = np
     batch_key = (xp, rdtypestr, n_qubits, n_elec_s, ex_ops)
@@ -119,7 +117,7 @@ def get_operator_tensors(n_qubits, n_elec_s, ex_ops):
     ci_strings, strs2addr = get_ci_strings(n_qubits, n_elec_s, strs2addr=True)
 
     xp = np
-    fket_permutation_tensor = xp.zeros((len(ex_ops), len(ci_strings)), dtype=get_uint_type())
+    fket_permutation_tensor = xp.zeros((len(ex_ops), len(ci_strings)), dtype=uint_type)
     fket_phase_tensor = xp.zeros((len(ex_ops), len(ci_strings)), dtype=np.int8)
     f2ket_phase_tensor = xp.zeros((len(ex_ops), len(ci_strings)), dtype=np.int8)
     for i, f_idx in enumerate(ex_ops):
@@ -144,7 +142,6 @@ def get_operator_tensors(n_qubits, n_elec_s, ex_ops):
     return ret
 
 
-@partial(jit, static_argnums=[1])
 def get_theta_tensors(params, param_ids):
     theta_list = []
     for param_id in param_ids:
@@ -156,7 +153,6 @@ def get_theta_tensors(params, param_ids):
     return theta_sin_tensor, theta_1mcos_tensor
 
 
-@jit
 def evolve_civector_by_tensor(
     civector, fket_permutation_tensor, fket_phase_tensor, f2ket_phase_tensor, theta_sin, theta_1mcos
 ):
@@ -174,7 +170,6 @@ def evolve_civector_by_tensor(
     return val
 
 
-@partial(jit, static_argnums=[1, 2, 3, 4, 5])
 def get_civector(params, n_qubits, n_elec_s, ex_ops, param_ids, init_state=None):
     ci_strings, fket_permutation_tensor, fket_phase_tensor, f2ket_phase_tensor = get_operator_tensors(
         n_qubits, n_elec_s, ex_ops
@@ -192,51 +187,6 @@ def get_civector(params, n_qubits, n_elec_s, ex_ops, param_ids, init_state=None)
     return civector.reshape(-1)
 
 
-def get_energy_and_grad_civector(
-    params, hamiltonian, n_qubits, n_elec_s, ex_ops: Tuple, param_ids: Tuple, init_state=None
-):
-    ket = get_civector(params, n_qubits, n_elec_s, ex_ops, param_ids, init_state)
-    bra = apply_op(hamiltonian, ket)
-    energy = bra @ ket
-    # already cached
-    op_tensors = get_operator_tensors(n_qubits, n_elec_s, ex_ops)
-    theta_tensors = get_theta_tensors(params, param_ids)
-    op_tensors = list(op_tensors) + list(theta_tensors)
-    gradients_beforesum = _get_gradients_civector(bra, ket, *op_tensors[1:])
-
-    gradients_beforesum = np.asarray(gradients_beforesum)
-    gradients = np.zeros(params.shape)
-    for grad, param_id in zip(gradients_beforesum, param_ids):
-        gradients[param_id] += grad
-
-    return energy, 2 * gradients
-
-
-@jit
-def _get_gradients_civector(
-    bra, ket, fket_permutation_tensor, fket_phase_tensor, f2ket_phase_tensor, theta_sin, theta_1mcos
-):
-    scan_xs = fket_permutation_tensor, fket_phase_tensor, f2ket_phase_tensor, -theta_sin, theta_1mcos
-
-    def _evolve_excitation(_civector, _fket_permutation, _fket_phase, _f2ket_phase):
-        _civector += _f2ket_phase * _civector + _civector[_fket_permutation] * _fket_phase
-        return _civector
-
-    def get_grad(braket, scan_x):
-        _bra, _ket = braket
-        _fket_permutation, _fket_phase, _f2ket_phase, _theta_msin, _theta_1mcos = scan_x
-        _ket = _evolve_excitation(_ket, _fket_permutation, _fket_phase * _theta_msin, _f2ket_phase * _theta_1mcos)
-        _bra = _evolve_excitation(_bra, _fket_permutation, _fket_phase * _theta_msin, _f2ket_phase * _theta_1mcos)
-        _fket = _ket[_fket_permutation] * _fket_phase
-        grad = _bra @ _fket
-
-        return (_bra, _ket), grad
-
-    _, gradients = scan(get_grad, (bra, ket), scan_xs, len(fket_permutation_tensor), reverse=True)
-
-    return gradients
-
-
 def evolve_excitation_nocache(civector, fket_permutation, fket_phase, f2ket_phase, theta_1mcos, theta_sin):
     fket = civector[fket_permutation] * fket_phase
     f2ket = civector * f2ket_phase
@@ -244,7 +194,6 @@ def evolve_excitation_nocache(civector, fket_permutation, fket_phase, f2ket_phas
     return civector
 
 
-@partial(jit, static_argnums=[1, 2, 3, 4, 5])
 def get_civector_nocache(params, n_qubits, n_elec_s, ex_ops, param_ids, init_state=None):
     theta_sin_tensor, theta_1mcos_tensor = get_theta_tensors(params, param_ids)
     ci_strings, strs2addr = get_ci_strings(n_qubits, n_elec_s, strs2addr=True)
@@ -271,7 +220,7 @@ def get_energy_and_grad_civector_nocache(
     energy = bra @ ket
 
     gradients_beforesum = _get_gradients_civector_nocache(bra, ket, params, n_qubits, n_elec_s, ex_ops, param_ids)
-    gradients_beforesum = tc.backend.numpy(gradients_beforesum)
+    gradients_beforesum = np.asarray(gradients_beforesum)
 
     gradients = np.zeros(params.shape)
     for grad, param_id in zip(gradients_beforesum, param_ids):
@@ -280,7 +229,6 @@ def get_energy_and_grad_civector_nocache(
     return energy, 2 * gradients
 
 
-@partial(jit, static_argnums=[3, 4, 5, 6, 7])
 def _get_gradients_civector_nocache(bra, ket, params, n_qubits, n_elec_s, ex_ops, param_ids):
     ci_strings, strs2addr = get_ci_strings(n_qubits, n_elec_s, True)
     theta_sin_tensor, theta_1mcos_tensor = get_theta_tensors(params, param_ids)

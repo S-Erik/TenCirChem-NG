@@ -10,14 +10,11 @@ import logging
 
 import numpy as np
 
-from tencirchem.backend import jit, value_and_grad
 from tencirchem.misc import unpack_nelec
 from tencirchem.hamiltonian import apply_op
 from tencirchem.ci_utils import get_ci_strings, civector_to_statevector, statevector_to_civector
 from tencirchem.evolve_civector import (
     get_civector_nocache,
-    get_energy_and_grad_civector,
-    get_energy_and_grad_civector_nocache,
     apply_excitation_civector,
     apply_excitation_civector_nocache,
 )
@@ -84,41 +81,8 @@ def get_energy(params, hamiltonian, n_qubits, n_elec_s, ex_ops, param_ids, init_
 
 
 get_energy_statevector = partial(get_energy, engine="statevector")
-try:
-    get_energy_and_grad_statevector = jit(value_and_grad(get_energy_statevector), static_argnums=[2, 3, 4, 5, 6])
-except NotImplementedError:
-
-    def get_energy_and_grad_statevector(*args, **kwargs):
-        raise NotImplementedError("Non JAX-backend for statevector engine")
-
 
 get_energy_tensornetwork = partial(get_energy, engine="tensornetwork")
-try:
-    get_energy_and_grad_tensornetwork = jit(value_and_grad(get_energy_tensornetwork), static_argnums=[2, 3, 4, 5, 6])
-except NotImplementedError:
-
-    def get_energy_and_grad_tensornetwork(*args, **kwargs):
-        raise NotImplementedError("Non JAX-backend for tensornetwork engine")
-
-
-ENERGY_AND_GRAD_MAP = {
-    "tensornetwork": get_energy_and_grad_tensornetwork,
-    "statevector": get_energy_and_grad_statevector,
-    "civector": get_energy_and_grad_civector,
-    "civector-large": get_energy_and_grad_civector_nocache,
-    # "pyscf": get_energy_and_grad_pyscf,
-}
-
-
-def get_energy_and_grad(params, hamiltonian, n_qubits, n_elec_s, ex_ops, param_ids, init_state, engine):
-    if engine not in ENERGY_AND_GRAD_MAP:
-        raise ValueError(f"Engine '{engine}' not supported")
-
-    func = ENERGY_AND_GRAD_MAP[engine]
-    ci_strings = get_ci_strings(n_qubits, n_elec_s)
-    init_state = translate_init_state(init_state, n_qubits, ci_strings)
-    return func(params, hamiltonian, n_qubits, n_elec_s, tuple(ex_ops), tuple(param_ids), init_state)
-
 
 APPLY_EXCITATION_MAP = {
     # share the same function with statevector engine

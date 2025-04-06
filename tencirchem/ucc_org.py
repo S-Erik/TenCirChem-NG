@@ -400,7 +400,7 @@ class UCC:
 
         if len(params) != self.n_params:
             raise ValueError(f"Incompatible parameter shape. {self.n_params} is desired. Got {len(params)}")
-        return tc.backend.convert_to_tensor(params).astype(tc.rdtypestr)
+        return np.asarray(params).astype(tc.rdtypestr)
 
     def _check_engine(self, engine):
         supported_engine = [None, "tensornetwork", "statevector", "civector", "civector-large", "pyscf"]

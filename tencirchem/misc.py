@@ -26,7 +26,8 @@ def csc_to_coo(csc):
     mask = DISCARD_EPS < np.abs(coo.data.real)
     indices = np.array([coo.row[mask], coo.col[mask]]).T
     values = coo.data.real[mask].astype(rdtypestr)
-    return tc.backend.coo_sparse_matrix(indices=indices, values=values, shape=coo.shape)
+
+    return coo_matrix((values, (indices[:, 0], indices[:, 1])), shape=coo.shape)
 
 
 def fop_to_coo(fop: FermionOperator, n_qubits: int, real: bool = True):

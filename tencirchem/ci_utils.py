@@ -9,14 +9,12 @@ from functools import partial
 import numpy as np
 from pyscf.fci import cistring
 
-from tencirchem import rdtypestr
-from tencirchem.backend import jit, tensor_set_elem, get_uint_type
+from tencirchem import rdtypestr, uint_type
 from tencirchem.misc import unpack_nelec
 
 
 def get_ci_strings(n_qubits, n_elec_s, strs2addr=False):
     xp = np
-    uint_type = get_uint_type()
     if 2**n_qubits > np.iinfo(uint_type).max:
         raise ValueError(f"Too many qubits: {n_qubits}, try using complex128 datatype")
     na, nb = unpack_nelec(n_elec_s)
@@ -79,15 +77,15 @@ def get_ex_bitstring(n_qubits, n_elec_s, ex_op):
 
 def civector_to_statevector(civector, n_qubits, ci_strings):
     statevector = np.zeros(2**n_qubits, dtype=rdtypestr)
-    return tensor_set_elem(statevector, ci_strings, civector)
+    statevector[ci_strings] = civector
+    return statevector
 
 
 def statevector_to_civector(statevector, ci_strings):
     return statevector[ci_strings]
 
 
-@partial(jit, static_argnums=[0])
 def get_init_civector(len_ci):
     civector = np.zeros(len_ci, dtype=rdtypestr)
-    civector = tensor_set_elem(civector, 0, 1)
+    civector[0] = 1
     return civector
