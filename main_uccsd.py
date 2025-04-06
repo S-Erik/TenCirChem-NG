@@ -3,8 +3,8 @@ import numpy as np
 import tencirchem as tcc
 from tencirchem.ex_ops import get_ex1_ops, get_ex2_ops
 
-nelec = (1, 1)
-norb = 2
+nelec = (2, 2)
+norb = 4
 h1e, h2e = tcc.hamiltonian.random_integral(norb)
 ecore = 0.0
 

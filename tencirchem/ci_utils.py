@@ -37,10 +37,16 @@ def get_ci_strings(n_qubits, n_elec_s, strs2addr=False):
 
 
 def get_addr(excitation, n_qubits, n_elec_s, strs2addr, num_strings=None):
-    alpha = excitation >> (n_qubits // 2)  # Right-shift bitstring by (n_qubits // 2) bits
-    # 2**n is bitstring with a one at index n (counting from right starting from 0)
-    #               0..0   1 0   ..000
-    #   indices:    ...n+1 n n-1 ..210
+    # Right-shift bitstring by (n_qubits // 2) bits
+    # yielding alpha spin part (left-side bits) of `excitation`
+    alpha = excitation >> (n_qubits // 2)
+    # 2**n is bitstring with a one at index n (counting from right starting from 0):
+    #               0..0   1 0   ..0 0 0
+    #   indices:    ...n+1 n n-1 ..2 1 0
+    # 2**n - 1 is bitstring with a zero at index n and ones otherwise:
+    #               0..0   0 1   ..1 1 1
+    #   indices:    ...n+1 n n-1 ..2 1 0
+    # Bitwise AND (&) now gives beta spin (right-side bits) of excitation
     beta = excitation & (2 ** (n_qubits // 2) - 1)
     na, nb = n_elec_s
     if na == nb:
@@ -51,6 +57,16 @@ def get_addr(excitation, n_qubits, n_elec_s, strs2addr, num_strings=None):
         beta_addr = strs2addr[1][beta]
     if num_strings is None:
         num_strings = cistring.num_strings(n_qubits // 2, nb)
+    # print("In get_addr")
+    # print(f"excitation: {[bin(x)[2:].zfill(n_qubits) for x in excitation]}")
+    # print(f"alpha:      {[(bin(x)[2:].zfill(n_qubits), x.item()) for x in alpha]}")
+    # print(f"beta:       {[(bin(x)[2:].zfill(n_qubits), x.item()) for x in beta]}")
+    # print(f"strs2addr: {strs2addr}")
+    # print(f"alpha_addr: {alpha_addr}, beta_addr: {beta_addr}")
+    # print(f"num_strings: {num_strings}")
+    # print(f"alpha_addr * num_strings + beta_addr: {alpha_addr * num_strings + beta_addr}")
+    # print()
+    # TODO: Unclear what strs2addr and return value represent
     return alpha_addr * num_strings + beta_addr
 
 

@@ -24,13 +24,13 @@ def get_fket_permutation(f_idx, n_qubits, n_elec_s, ci_strings, strs2addr):
         # mask += 2**i  # same as above
     # mask now is bitstring with a one at each index in f_idx list and zeros otherwise,
     # where f_idx is an excitation, e.g., (3, 0) or (6, 3, 1, 2)
-    excitation = ci_strings ^ mask  # Flips bits of bitstring ci_strings where mask has ones
-    print("In get_fket_permutation")
-    print(f"ex_op: {f_idx} -> mask: {bin(mask)[2:].zfill(n_qubits)}")
-    print(f"org ci-strings: {[bin(x)[2:].zfill(n_qubits) for x in ci_strings]}")
-    print(f"masked:         {[bin(x)[2:].zfill(n_qubits) for x in excitation]}")
-    print(f"strs2addr:      {strs2addr}")
-    print()
+    excitation = ci_strings ^ mask  # Bitwise XOR: Flips bits of bitstring ci_strings where mask has ones
+    # print("In get_fket_permutation")
+    # print(f"ex_op: {f_idx} -> mask: {bin(mask)[2:].zfill(n_qubits)}")
+    # print(f"org ci-strings: {[bin(x)[2:].zfill(n_qubits) for x in ci_strings]}")
+    # print(f"masked:         {[bin(x)[2:].zfill(n_qubits) for x in excitation]}")
+    # print(f"strs2addr:      {strs2addr}\ttype: {type(strs2addr)}, type element: {type(strs2addr[0])}")
+    # print()
     return get_addr(excitation, n_qubits, n_elec_s, strs2addr)
 
 
@@ -40,13 +40,33 @@ def get_fket_phase(f_idx, ci_strings):
         mask2 = 1 << f_idx[1]
     else:
         assert len(f_idx) == 4
-        mask1 = (1 << f_idx[0]) + (1 << f_idx[1])
-        mask2 = (1 << f_idx[2]) + (1 << f_idx[3])
-    flip = ci_strings ^ mask1
-    mask = mask1 | mask2
+        mask1 = (1 << f_idx[0]) + (1 << f_idx[1])  # creation operator indices
+        mask2 = (1 << f_idx[2]) + (1 << f_idx[3])  # annihilation operator indices
+    flip = ci_strings ^ mask1  # Flip bits for creation operator indices
+    mask = mask1 | mask2  # Combine masks: ones at each index in f_idx and zeros otherwise
+    # Bitwise AND (&). Produces a one where creation operators act on unoccpied orbitals
+    #                                 and orbitals where annihilation operators act are already occupied
     masked = flip & mask
+    # True/1 where `masked` matches exaclty `mask`
+    # equivalent to: True/1 where the ci-string is not mapped to the zero state by the excitation
+    # equivalent to: True/1 where the ci-string is not destroyed by the excitation
+    # equivalent to: True/1 where the excitation can act on the ci-string without destryoing the state
     positive = masked == mask
+    # True/1 where `masked` is equal to all zero bitstring
+    # equivalent to: True/1 where the ci-string is occupied on EVERY orbital the creation operators act on
+    #                       and unoccupied on EVERY orbital the annihilation operators act on
     negative = masked == 0
+    print("In get_fket_phase")
+    print(f"ex_op: {f_idx}")
+    print(f"ci_strings: {[bin(x)[2:] for x in ci_strings]}")
+    print(f"mask1:      {bin(mask1)[2:]}")
+    print(f"mask2:      {bin(mask2)[2:]}")
+    print(f"mask:       {bin(mask)[2:]}")
+    print(f"flip:       {[bin(x)[2:] for x in flip]}")
+    print(f"masked:     {[bin(x)[2:] for x in masked]}")
+    print(f"positive:   {[int(x) for x in positive]}")
+    print(f"negative:   {[int(x) for x in negative]}")
+    print()
     return positive, negative
 
 
