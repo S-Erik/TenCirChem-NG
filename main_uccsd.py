@@ -11,14 +11,13 @@ ecore = 0.0
 kwargs = {
     "init_method": "zeros",
     "mo_coeff": np.eye(norb),
-    "hcb": False,
-    "engine": "ci_vector",
+    "engine": "civector",
     "run_hf": False,
     "run_mp2": False,
     "run_ccsd": False,
     "run_fci": False,
 }
-tcc_uccsd = tcc.ucc_all_in_one.UCC.from_integral(h1e, h2e, nelec, ecore)
+tcc_uccsd = tcc.ucc_all_in_one.UCC.from_integral(h1e, h2e, nelec, ecore, **kwargs)
 tcc_uccsd.param_ids = None
 
 single_ex = get_ex1_ops(norb, nelec)
@@ -35,4 +34,4 @@ energy = tcc_uccsd.energy(params)
 print(params)
 print(energy)
 
-assert energy == -0.35955984738805385
+assert energy == -0.6111608579235854

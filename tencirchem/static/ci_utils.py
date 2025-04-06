@@ -14,44 +14,34 @@ from tencirchem.utils.backend import jit, tensor_set_elem, get_xp, get_uint_type
 from tencirchem.utils.misc import unpack_nelec
 
 
-def get_ci_strings(n_qubits, n_elec_s, hcb, strs2addr=False):
+def get_ci_strings(n_qubits, n_elec_s, strs2addr=False):
     xp = get_xp(tc.backend)
     uint_type = get_uint_type()
     if 2**n_qubits > np.iinfo(uint_type).max:
         raise ValueError(f"Too many qubits: {n_qubits}, try using complex128 datatype")
     na, nb = unpack_nelec(n_elec_s)
-    if not hcb:
-        beta = cistring.make_strings(range(n_qubits // 2), nb)
-        beta = xp.array(beta, dtype=uint_type)
-        if na == nb:
-            alpha = beta
-        else:
-            alpha = cistring.make_strings(range(n_qubits // 2), na)
-            alpha = xp.array(alpha, dtype=uint_type)
-        ci_strings = ((alpha << (n_qubits // 2)).reshape(-1, 1) + beta.reshape(1, -1)).ravel()
-        if strs2addr:
-            if na == nb:
-                strs2addr = xp.zeros(2 ** (n_qubits // 2), dtype=uint_type)
-                strs2addr[beta] = xp.arange(len(beta))
-            else:
-                strs2addr = xp.zeros((2, 2 ** (n_qubits // 2)), dtype=uint_type)
-                strs2addr[0][alpha] = xp.arange(len(alpha))
-                strs2addr[1][beta] = xp.arange(len(beta))
-            return ci_strings, strs2addr
+    beta = cistring.make_strings(range(n_qubits // 2), nb)
+    beta = xp.array(beta, dtype=uint_type)
+    if na == nb:
+        alpha = beta
     else:
-        assert na == nb
-        ci_strings = cistring.make_strings(range(n_qubits), na).astype(uint_type)
-        if strs2addr:
-            strs2addr = xp.zeros(2**n_qubits, dtype=uint_type)
-            strs2addr[ci_strings] = xp.arange(len(ci_strings))
-            return ci_strings, strs2addr
+        alpha = cistring.make_strings(range(n_qubits // 2), na)
+        alpha = xp.array(alpha, dtype=uint_type)
+    ci_strings = ((alpha << (n_qubits // 2)).reshape(-1, 1) + beta.reshape(1, -1)).ravel()
+    if strs2addr:
+        if na == nb:
+            strs2addr = xp.zeros(2 ** (n_qubits // 2), dtype=uint_type)
+            strs2addr[beta] = xp.arange(len(beta))
+        else:
+            strs2addr = xp.zeros((2, 2 ** (n_qubits // 2)), dtype=uint_type)
+            strs2addr[0][alpha] = xp.arange(len(alpha))
+            strs2addr[1][beta] = xp.arange(len(beta))
+        return ci_strings, strs2addr
 
     return ci_strings
 
 
-def get_addr(excitation, n_qubits, n_elec_s, strs2addr, hcb, num_strings=None):
-    if hcb:
-        return strs2addr[excitation]
+def get_addr(excitation, n_qubits, n_elec_s, strs2addr, num_strings=None):
     alpha = excitation >> (n_qubits // 2)
     beta = excitation & (2 ** (n_qubits // 2) - 1)
     na, nb = n_elec_s
@@ -66,15 +56,11 @@ def get_addr(excitation, n_qubits, n_elec_s, strs2addr, hcb, num_strings=None):
     return alpha_addr * num_strings + beta_addr
 
 
-def get_ex_bitstring(n_qubits, n_elec_s, ex_op, hcb):
+def get_ex_bitstring(n_qubits, n_elec_s, ex_op):
     na, nb = n_elec_s
-    if not hcb:
-        bitstring_basea = ["0"] * (n_qubits // 2 - na) + ["1"] * na
-        bitstring_baseb = ["0"] * (n_qubits // 2 - nb) + ["1"] * nb
-        bitstring_base = bitstring_basea + bitstring_baseb
-    else:
-        assert na == nb
-        bitstring_base = ["0"] * (n_qubits - na) + ["1"] * na
+    bitstring_basea = ["0"] * (n_qubits // 2 - na) + ["1"] * na
+    bitstring_baseb = ["0"] * (n_qubits // 2 - nb) + ["1"] * nb
+    bitstring_base = bitstring_basea + bitstring_baseb
 
     bitstring = bitstring_base.copy()[::-1]
     # first annihilation then creation

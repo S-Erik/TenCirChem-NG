@@ -20,7 +20,7 @@ from pyscf import ao2mo
 import tensorcircuit as tc
 from tensorcircuit import QuOperator
 
-from tencirchem.utils.misc import hcb_to_coo, fop_to_coo, reverse_qop_idx, canonical_mo_coeff, get_n_qubits
+from tencirchem.utils.misc import fop_to_coo, reverse_qop_idx, canonical_mo_coeff, get_n_qubits
 from tencirchem.constants import DISCARD_EPS
 
 
@@ -132,17 +132,11 @@ def get_hop_hcb_from_integral(int1e, int2e):
     return qop
 
 
-def get_h_sparse_from_integral(int1e, int2e, hcb=False, do_log=False):
-    if not hcb:
-        ops = get_hop_from_integral(int1e, int2e)
-    else:
-        ops = get_hop_hcb_from_integral(int1e, int2e)
+def get_h_sparse_from_integral(int1e, int2e, do_log=False):
+    ops = get_hop_from_integral(int1e, int2e)
     if do_log:
         logger.info("Constructing sparse Hamiltonian")
-    if not hcb:
-        h_sparse = fop_to_coo(ops, n_qubits=2 * len(int1e))
-    else:
-        h_sparse = hcb_to_coo(ops, n_qubits=len(int1e))
+    h_sparse = fop_to_coo(ops, n_qubits=2 * len(int1e))
     if do_log:
         logger.info("Sparse Hamiltonian constructed")
     return h_sparse
@@ -160,48 +154,16 @@ def get_h_fcifunc_from_integral(int1e, int2e, n_elec):
     return fci_func
 
 
-def get_h_fcifunc_hcb_from_integral(int1e, int2e, n_elec):
-    # todo: how about using https://github.com/pyscf/doci
-    n_orb = len(int1e)
-    ci_strings = cistring.make_strings(range(n_orb), n_elec // 2)
-
-    def fci_func(civector):
-        res = tc.backend.zeros(len(civector), dtype=tc.rdtypestr)
-        for p in range(n_orb):
-            for q in range(p + 1):
-                if p == q:
-                    bitmask = 1 << p
-                    arraymask = (ci_strings & bitmask) == bitmask
-                    res += (civector * arraymask) * (2 * int1e[p, p] + int2e[p, p, p, p])
-                else:
-                    bitmask = (1 << p) + (1 << q)
-                    excitation = ci_strings ^ bitmask
-                    addr = cistring.strs2addr(n_orb, n_elec // 2, excitation)
-                    flip = ci_strings ^ (1 << p)
-                    masked_flip = flip & bitmask
-                    arraymask = (masked_flip == bitmask) | (masked_flip == 0)
-                    res += civector[addr] * arraymask * int2e[p, q, p, q]
-                    arraymask = (ci_strings & bitmask) == bitmask
-                    res += (civector * arraymask) * (4 * int2e[p, p, q, q] - 2 * int2e[p, q, p, q])
-        return res
-
-    return fci_func
-
-
-def get_h_from_integral(int1e, int2e, n_elec_s, hcb: bool, htype: str):
+def get_h_from_integral(int1e, int2e, n_elec_s, htype: str):
     if htype == "sparse":
-        hamiltonian = get_h_sparse_from_integral(int1e, int2e, hcb=hcb, do_log=True)
+        hamiltonian = get_h_sparse_from_integral(int1e, int2e, do_log=True)
     else:
         assert htype.lower() == "fcifunc"
-        if not hcb:
-            hamiltonian = get_h_fcifunc_from_integral(int1e, int2e, n_elec_s)
-        else:
-            n_elec = sum(n_elec_s)
-            hamiltonian = get_h_fcifunc_hcb_from_integral(int1e, int2e, n_elec)
+        hamiltonian = get_h_fcifunc_from_integral(int1e, int2e, n_elec_s)
     return hamiltonian
 
 
-def get_h_from_hf(hf: RHF, active_space: Tuple = None, hcb: bool = False, htype="sparse"):
+def get_h_from_hf(hf: RHF, active_space: Tuple = None, htype="sparse"):
     if not isinstance(hf, RHF):
         raise TypeError(f"hf object must RHF class, got {type(hf)}")
     htype = htype.lower()
@@ -215,7 +177,7 @@ def get_h_from_hf(hf: RHF, active_space: Tuple = None, hcb: bool = False, htype=
     assert n_elec % 2 == 0
     n_elec_s = [n_elec // 2, n_elec // 2]
 
-    hamiltonian = get_h_from_integral(int1e, int2e, n_elec_s, hcb, htype)
+    hamiltonian = get_h_from_integral(int1e, int2e, n_elec_s, htype)
 
     if active_space is None:
         return hamiltonian

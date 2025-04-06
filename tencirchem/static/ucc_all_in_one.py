@@ -41,7 +41,6 @@ from tencirchem.static.hamiltonian import (
     get_integral_from_hf,
     get_h_from_integral,
     get_hop_from_integral,
-    get_hop_hcb_from_integral,
 )
 from tencirchem.static.ci_utils import get_ci_strings, get_ex_bitstring, get_addr, get_init_civector
 
@@ -115,80 +114,20 @@ class UCC:
             assert n_elec % 2 == 0
             spin = 0
         m = _Molecule(int1e, int2e, n_elec, spin, e_core, ovlp)
-        return cls(m, **kwargs)
-
-    @classmethod
-    def as_pyscf_solver(cls, config_function: Callable = None, **kwargs):
-        """
-        Converts the ``UCC`` class to a PySCF FCI solver.
-
-        Parameters
-        ----------
-        config_function: callable
-            A function to configure the ``UCC`` instance.
-            Accepts the ``UCC`` instance and modifies it inplace before :func:`kernel` is called.
-        kwargs
-            Other arguments to be passed to the :func:`__init__` function such as ``engine``.
-
-        Returns
-        -------
-        FCISolver
-
-        Examples
-        --------
-        >>> from pyscf.mcscf import CASSCF
-        >>> from tencirchem import UCCSD
-        >>> from tencirchem.molecule import h8
-        >>> # normal PySCF workflow
-        >>> hf = h8.HF()
-        >>> round(hf.kernel(), 8)
-        -4.14961853
-        >>> casscf = CASSCF(hf, 2, 2)
-        >>> # set the FCI solver for CASSCF to be UCCSD
-        >>> casscf.fcisolver = UCCSD.as_pyscf_solver()
-        >>> round(casscf.kernel()[0], 8)
-        -4.16647335
-        """
-
-        class FakeFCISolver:
-            def __init__(self):
-                self.instance: UCC = None
-                self.config_function = config_function
-                self.instance_kwargs = kwargs
-                for arg in ["run_ccsd", "run_fci"]:
-                    # keep MP2 for initial guess
-                    self.instance_kwargs[arg] = False
-
-            def kernel(self, h1, h2, norb, nelec, ci0=None, ecore=0, **kwargs):
-                self.instance = cls.from_integral(h1, h2, nelec, **self.instance_kwargs)
-                if self.config_function is not None:
-                    self.config_function(self.instance)
-                e = self.instance.kernel()
-                return e + ecore, self.instance.params
-
-            def make_rdm1(self, params, norb, nelec):
-                civector = self.instance.civector(params)
-                return self.instance.make_rdm1(civector)
-
-            def make_rdm12(self, params, norb, nelec):
-                civector = self.instance.civector(params)
-                rdm1 = self.instance.make_rdm1(civector)
-                rdm2 = self.instance.make_rdm2(civector)
-                return rdm1, rdm2
-
-            def spin_square(self, params, norb, nelec):
-                return 0, 1
-
-        return FakeFCISolver()
+        return cls(int1e, int2e, n_elec, spin, e_core, ovlp, **kwargs)
 
     def __init__(
         self,
-        mol: Union[Mole, RHF],
+        int1e,
+        int2e,
+        n_elec,
+        spin,
+        e_core,
+        ovlp,
         init_method="mp2",
         active_space=None,
         aslst=None,
         mo_coeff=None,
-        hcb=False,
         engine=None,
         run_hf=True,
         run_mp2=True,
@@ -221,8 +160,6 @@ class UCC:
             Molecule coefficients. If provided then RHF is skipped.
             Can be used in combination with the ``init_state`` attribute.
             Defaults to None which means RHF orbitals are used.
-        hcb: bool, optional
-            Whether force electrons to pair as hard-core boson (HCB). Default to False.
         engine: str, optional
             The engine to run the calculation. See :ref:`advanced:Engines` for details.
         run_hf: bool, optional
@@ -241,50 +178,34 @@ class UCC:
         tencirchem.KUPCCGSD
         tencirchem.PUCCD
         """
-        # process mol
-        if isinstance(mol, _Molecule):
-            self.mol = mol
-            self.mol.verbose = 0
-            self.hf: RHF = None
-        elif isinstance(mol, Mole):
-            # to set verbose = 0
-            self.mol = mol.copy()
-            # be cautious when modifying mol. Custom mols are common in practice
-            self.mol.verbose = 0
-            self.hf: RHF = None
-        elif isinstance(mol, RHF_TYPE):
-            self.hf: RHF = mol
-            self.mol = self.hf.mol
-            mol = self.mol
-        else:
-            raise TypeError(
-                f"Unknown input type {type(mol)}. If you're performing open shell calculations, "
-                "please use ROHF instead."
-            )
+        self.int1e = int1e
+        self.int2e = int2e
+        self.n_elec = n_elec
+        self.spin = spin
+        self.e_core = e_core
+        self.ovlp = ovlp
+
+        nelectron = n_elec
+        norb = self.int1e.shape[0]
 
         if active_space is None:
-            active_space = (mol.nelectron, int(mol.nao))
+            active_space = (nelectron, int(norb))
 
-        self.hcb = hcb
-        self.spin = self.mol.spin
-        if hcb:
-            assert self.spin == 0
+        self.spin = spin
         self.n_qubits = 2 * active_space[1]
-        if hcb:
-            self.n_qubits //= 2
 
         # process activate space
         self.active_space = active_space
         self.n_elec = active_space[0]
         self.active = active_space[1]
-        self.inactive_occ = (mol.nelectron - active_space[0]) // 2
-        assert (mol.nelectron - active_space[0]) % 2 == 0
-        self.inactive_vir = mol.nao - active_space[1] - self.inactive_occ
+        self.inactive_occ = (nelectron - active_space[0]) // 2
+        assert (nelectron - active_space[0]) % 2 == 0
+        self.inactive_vir = norb - active_space[1] - self.inactive_occ
         if aslst is None:
-            aslst = list(range(self.inactive_occ, mol.nao - self.inactive_vir))
+            aslst = list(range(self.inactive_occ, norb - self.inactive_vir))
         if len(aslst) != active_space[1]:
             raise ValueError("sort_mo should have the same length as the number of active orbitals.")
-        frozen_idx = [i for i in range(mol.nao) if i not in aslst]
+        frozen_idx = [i for i in range(norb) if i not in aslst]
         self.aslst = aslst
 
         # process backend
@@ -298,79 +219,16 @@ class UCC:
                 engine = "civector-large"
         self.engine = engine
 
-        # classical quantum chemistry
-        # hf
-        if self.hf is not None:
-            self.e_hf = self.hf.e_tot
-            self.hf.mo_coeff = canonical_mo_coeff(self.hf.mo_coeff)
-        elif run_hf:
-            if self.spin == 0:
-                self.hf = RHF(self.mol)
-            else:
-                self.hf = ROHF(self.mol)
-            # avoid serialization warnings for `_Molecule`
-            self.hf.chkfile = None
-            # run this even when ``mo_coeff is not None`` because MP2 and CCSD
-            # reference energy might be desired
-            self.e_hf = self.hf.kernel(dump_chk=False)
-            self.hf.mo_coeff = canonical_mo_coeff(self.hf.mo_coeff)
-        else:
-            self.e_hf = None
-            # otherwise, can't run casci.get_h2eff() based on HF
-            self.hf = RHF(self.mol)
-            self.hf._eri = mol.intor("int2e", aosym="s8")
-            if mo_coeff is None:
-                raise ValueError("Must provide MO coefficient if HF is skipped")
-
-        # mp2
-        if run_mp2 and not isinstance(self.hf, ROHF_TYPE):
-            mp2 = self.hf.MP2()
-            if frozen_idx:
-                mp2.frozen = frozen_idx
-            e_corr_mp2, mp2_t2 = mp2.kernel()
-            self.e_mp2 = self.e_hf + e_corr_mp2
-        else:
-            self.e_mp2 = None
-            mp2_t2 = None
-            if init_method is not None and init_method.lower() == "mp2":
-                raise ValueError("Must run RHF and MP2 to use MP2 as the initial guess method")
-
-        # ccsd
-        if run_ccsd and not isinstance(self.hf, ROHF_TYPE):
-            ccsd = self.hf.CCSD()
-            if frozen_idx:
-                ccsd.frozen = frozen_idx
-            e_corr_ccsd, ccsd_t1, ccsd_t2 = ccsd.kernel()
-            self.e_ccsd = self.e_hf + e_corr_ccsd
-        else:
-            self.e_ccsd = None
-            ccsd_t1 = ccsd_t2 = None
-            if init_method is not None and init_method.lower() == "ccsd":
-                raise ValueError("Must run CCSD to use CCSD as the initial guess method")
-
         # MP2 and CCSD rely on canonical HF orbitals but FCI doesn't
         # so set custom mo_coeff after MP2 and CCSD and before FCI
         if mo_coeff is not None:
             # use user defined coefficient
-            self.hf.mo_coeff = canonical_mo_coeff(mo_coeff)
+            self.mo_coeff = canonical_mo_coeff(mo_coeff)
 
-        # fci
-        if run_fci:
-            fci = CASCI(self.hf, self.active_space[1], self.active_space[0])
-            fci.max_memory = 32000
-            mo = fci.sort_mo(aslst, base=0)
-            res = fci.kernel(mo)
-            self.e_fci = res[0]
-            self.civector_fci = res[2].ravel()
-        else:
-            self.e_fci = None
-            self.civector_fci = None
-
-        self.e_nuc = mol.energy_nuc()
+        self.e_nuc = e_core
 
         # Hamiltonian related
         self.hamiltonian_lib = {}
-        self.int1e = self.int2e = None
         # e_core includes nuclear repulsion energy
         self.hamiltonian, self.e_core, _ = self._get_hamiltonian_and_core(self.engine)
 
@@ -380,12 +238,6 @@ class UCC:
         self.init_method = init_method
         if init_method is None or init_method in ["zeros", "zero"]:
             pass
-        elif init_method.lower() == "ccsd":
-            self.t1, self.t2 = ccsd_t1, ccsd_t2
-        elif init_method.lower() == "fe":
-            self.t2 = compute_fe_t2(self.no, self.nv, self.int1e, self.int2e)
-        elif init_method.lower() == "mp2":
-            self.t2 = mp2_t2
         else:
             raise ValueError(f"Unknown initialization method: {init_method}")
 
@@ -469,7 +321,7 @@ class UCC:
         if engine is None:
             engine = self.engine
         civector = get_civector(
-            params, self.n_qubits, self.n_elec_s, self.ex_ops, self.param_ids, self.hcb, self.init_state, engine
+            params, self.n_qubits, self.n_elec_s, self.ex_ops, self.param_ids, self.init_state, engine
         )
         return civector
 
@@ -501,7 +353,7 @@ class UCC:
         >>> uccsd.get_ci_strings(True)[1]  # only one spin sector
         array([0, 0, 1, 0], dtype=uint64)
         """
-        return get_ci_strings(self.n_qubits, self.n_elec_s, self.hcb, strs2addr=strs2addr)
+        return get_ci_strings(self.n_qubits, self.n_elec_s, strs2addr=strs2addr)
 
     # since there's ci_vector method
     ci_strings = get_ci_strings
@@ -536,7 +388,7 @@ class UCC:
         1
         """
         _, strs2addr = self.get_ci_strings(strs2addr=True)
-        return int(get_addr(int(bitstring, base=2), self.n_qubits, self.n_elec_s, strs2addr, self.hcb))
+        return int(get_addr(int(bitstring, base=2), self.n_qubits, self.n_elec_s, strs2addr))
 
     def statevector(self, params: Tensor = None, engine: str = None) -> Tensor:
         """
@@ -575,7 +427,7 @@ class UCC:
         if engine is None:
             engine = self.engine
         statevector = get_statevector(
-            params, self.n_qubits, self.n_elec_s, self.ex_ops, self.param_ids, self.hcb, self.init_state, engine
+            params, self.n_qubits, self.n_elec_s, self.ex_ops, self.param_ids, self.init_state, engine
         )
         return statevector
 
@@ -594,10 +446,10 @@ class UCC:
             hamiltonian = self.hamiltonian_lib.get(htype)
             if hamiltonian is None:
                 if self.int1e is None:
-                    self.int1e, self.int2e, e_core = get_integral_from_hf(self.hf, self.active_space, self.aslst)
+                    raise ValueError("One-electron integrals need to be provided but are not!")
                 else:
                     e_core = self.e_core
-                hamiltonian = get_h_from_integral(self.int1e, self.int2e, self.n_elec_s, self.hcb, htype)
+                hamiltonian = get_h_from_integral(self.int1e, self.int2e, self.n_elec_s, htype)
                 self.hamiltonian_lib[htype] = hamiltonian
             else:
                 e_core = self.e_core
@@ -646,7 +498,6 @@ class UCC:
             self.n_elec_s,
             self.ex_ops,
             self.param_ids,
-            self.hcb,
             self.init_state,
             engine,
         )
@@ -680,7 +531,7 @@ class UCC:
         self._check_engine(engine)
         if engine is None:
             engine = self.engine
-        return apply_excitation(state, self.n_qubits, self.n_elec_s, ex_op, hcb=self.hcb, engine=engine)
+        return apply_excitation(state, self.n_qubits, self.n_elec_s, ex_op, engine=engine)
 
     def _statevector_to_civector(self, statevector=None):
         if statevector is None:
@@ -933,7 +784,7 @@ class UCC:
         data_list = []
 
         for i, ex_op in zip(param_ids, self.ex_ops):
-            bitstring = get_ex_bitstring(self.n_qubits, self.n_elec_s, ex_op, self.hcb)
+            bitstring = get_ex_bitstring(self.n_qubits, self.n_elec_s, ex_op)
             data_list.append((ex_op, bitstring, params[i], self.init_guess[i]))
         return pd.DataFrame(data_list, columns=columns)
 
@@ -1022,10 +873,7 @@ class UCC:
         Hamiltonian as openfermion.QubitOperator, mapped by
         Jordan-Wigner transformation.
         """
-        if not self.hcb:
-            return reverse_qop_idx(jordan_wigner(self.h_fermion_op), self.n_qubits)
-        else:
-            return get_hop_hcb_from_integral(self.int1e, self.int2e) + self.e_core
+        return reverse_qop_idx(jordan_wigner(self.h_fermion_op), self.n_qubits)
 
     @property
     def n_params(self) -> int:
@@ -1045,11 +893,8 @@ class UCC:
         """
         The size of the CI vector.
         """
-        if not self.hcb:
-            na, nb = self.n_elec_s
-            return round(comb(self.n_qubits // 2, na)) * round(comb(self.n_qubits // 2, nb))
-        else:
-            return round(comb(self.n_qubits, self.n_elec // 2))
+        na, nb = self.n_elec_s
+        return round(comb(self.n_qubits // 2, na)) * round(comb(self.n_qubits // 2, nb))
 
     @property
     def init_state(self) -> Tensor:
