@@ -5,7 +5,6 @@
 
 
 from functools import partial
-from typing import Tuple
 import logging
 
 import numpy as np

@@ -1,7 +1,7 @@
 import numpy as np
 
 import tencirchem as tcc
-from ex_ops import get_ex1_ops, get_ex2_ops
+from tencirchem.ex_ops import get_ex1_ops, get_ex2_ops
 
 nelec = (1, 1)
 norb = 2

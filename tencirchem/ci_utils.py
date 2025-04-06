@@ -4,8 +4,6 @@
 #  and WITHOUT ANY WARRANTY. See the LICENSE file for details.
 
 
-from functools import partial
-
 import numpy as np
 from pyscf.fci import cistring
 

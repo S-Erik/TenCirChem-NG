@@ -20,126 +20,10 @@ from pyscf import ao2mo
 from tensorcircuit import QuOperator
 
 from tencirchem import rdtypestr
-from tencirchem.misc import fop_to_coo, reverse_qop_idx, canonical_mo_coeff, get_n_qubits
 from tencirchem.constants import DISCARD_EPS
 
 
 logger = logging.getLogger(__name__)
-
-
-def get_integral_from_hf(hf: RHF, active_space: Tuple = None, aslst: List[int] = None):
-    if not isinstance(hf, RHF):
-        raise TypeError(f"hf object must be RHF class, got {type(hf)}")
-    m = hf.mol
-    assert hf.mo_coeff is not None
-    # todo(weitangli): don't modify inplace
-    hf.mo_coeff = canonical_mo_coeff(hf.mo_coeff)
-
-    if active_space is None:
-        nelecas = m.nelectron
-        ncas = m.nao
-    else:
-        nelecas, ncas = active_space
-
-    casci = CASCI(hf, ncas, nelecas)
-    if aslst is None:
-        int1e, e_core = casci.get_h1eff()
-        int2e = ao2mo.restore("s1", casci.get_h2eff(), ncas)
-    else:
-        mo = casci.sort_mo(aslst, base=0)
-        int1e, e_core = casci.get_h1eff(mo)
-        int2e = ao2mo.restore("s1", casci.get_h2eff(mo), ncas)
-
-    return int1e, int2e, e_core
-
-
-def get_hop_from_integral(int1e, int2e):
-    n_orb = int1e.shape[0]
-    if int1e.shape != (n_orb, n_orb):
-        raise ValueError(f"Invalid one-boby integral array shape: {int1e.shape}")
-    int2e = ao2mo.restore(1, int2e, n_orb)
-    assert int2e.shape == (n_orb, n_orb, n_orb, n_orb)
-    n_sorb = n_orb * 2
-
-    logger.info("Creating Hamiltonian operators")
-
-    h1e = np.zeros((n_sorb, n_sorb))
-    h2e = np.zeros((n_sorb, n_sorb, n_sorb, n_sorb))
-
-    h1e[:n_orb, :n_orb] = h1e[n_orb:, n_orb:] = int1e
-
-    for p, q, r, s in product(range(n_sorb), repeat=4):
-        # a_p^\dagger a_q^\dagger a_r a_s
-        if ((p < n_orb) == (s < n_orb)) and ((q < n_orb) == (r < n_orb)):
-            # note the different orders of the indices
-            h2e[p, q, r, s] = int2e[p % n_orb, s % n_orb, q % n_orb, r % n_orb]
-
-    op1e = []
-    for p, q in product(range(n_sorb), repeat=2):
-        # a_p^\dagger a_q
-        v = h1e[p, q]
-        if np.abs(v) < DISCARD_EPS:
-            continue
-        op = FermionOperator(f"{p}^ {q}", v)
-        op1e.append(op)
-
-    op2e = []
-    for q, s in product(range(n_sorb), repeat=2):
-        for p, r in product(range(q), range(s)):
-            # a_p^\dagger a_q^\dagger a_r a_s
-            v = h2e[p, q, r, s] - h2e[q, p, r, s]
-            if np.abs(v) < DISCARD_EPS:
-                continue
-            op = FermionOperator(f"{p}^ {q}^ {r} {s}", v)
-            op2e.append(op)
-
-    logger.info("Summing Hamiltonian operators")
-    ops = FermionOperator()
-    for op in op1e + op2e:
-        ops += op
-
-    return ops
-
-
-def qubit_operator(string: str, coeff: float) -> QubitOperator:
-    ret = coeff
-    terms = string.split(" ")
-    for term in terms:
-        if term[-1] == "^":
-            sign = -1
-            term = term[:-1]
-        else:
-            sign = 1
-        idx = int(term)
-        ret *= (QubitOperator(f"X{idx}") + sign * 1j * QubitOperator(f"Y{idx}")) / 2
-    return ret
-
-
-def get_hop_hcb_from_integral(int1e, int2e):
-    # Hard core boson Hamiltonian
-    # https://arxiv.org/pdf/2002.00035.pdf
-    n_orb = int1e.shape[0]
-    qop = QubitOperator()
-    for p in range(n_orb):
-        for q in range(p + 1):
-            if p == q:
-                qop += qubit_operator(f"{p}^ {p}", 2 * int1e[p, p] + int2e[p, p, p, p])
-            else:
-                qop += qubit_operator(f"{p}^ {q}", int2e[p, q, p, q])
-                qop += qubit_operator(f"{q}^ {p}", int2e[q, p, q, p])
-                qop += qubit_operator(f"{p}^ {p} {q}^ {q}", 4 * int2e[p, p, q, q] - 2 * int2e[p, q, p, q])
-    qop = reverse_qop_idx(qop, n_orb)
-    return qop
-
-
-def get_h_sparse_from_integral(int1e, int2e, do_log=False):
-    ops = get_hop_from_integral(int1e, int2e)
-    if do_log:
-        logger.info("Constructing sparse Hamiltonian")
-    h_sparse = fop_to_coo(ops, n_qubits=2 * len(int1e))
-    if do_log:
-        logger.info("Sparse Hamiltonian constructed")
-    return h_sparse
 
 
 def get_h_fcifunc_from_integral(int1e, int2e, n_elec):
@@ -156,33 +40,11 @@ def get_h_fcifunc_from_integral(int1e, int2e, n_elec):
 
 def get_h_from_integral(int1e, int2e, n_elec_s, htype: str):
     if htype == "sparse":
-        hamiltonian = get_h_sparse_from_integral(int1e, int2e, do_log=True)
+        raise ValueError("Sparse hamiltonians not supported!")
     else:
         assert htype.lower() == "fcifunc"
         hamiltonian = get_h_fcifunc_from_integral(int1e, int2e, n_elec_s)
     return hamiltonian
-
-
-def get_h_from_hf(hf: RHF, active_space: Tuple = None, htype="sparse"):
-    if not isinstance(hf, RHF):
-        raise TypeError(f"hf object must RHF class, got {type(hf)}")
-    htype = htype.lower()
-    if not htype in ["sparse", "mpo", "fcifunc"]:
-        raise ValueError(f"htype must be 'sparse' or 'mpo', got '{htype}'")
-    int1e, int2e, e_core = get_integral_from_hf(hf, active_space)
-    if active_space is None:
-        n_elec = hf.mol.nelectron
-    else:
-        n_elec = active_space[0]
-    assert n_elec % 2 == 0
-    n_elec_s = [n_elec // 2, n_elec // 2]
-
-    hamiltonian = get_h_from_integral(int1e, int2e, n_elec_s, htype)
-
-    if active_space is None:
-        return hamiltonian
-    else:
-        return hamiltonian, e_core
 
 
 def mpo_to_quoperator(mpo: Mpo):

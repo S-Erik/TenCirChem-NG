@@ -9,17 +9,15 @@ from itertools import product
 from collections import defaultdict
 from time import time
 import logging
-from typing import Any, Tuple, Callable, List, Union
+from typing import Any, Tuple, List, Union
 
 import numpy as np
 from scipy.special import comb
 import pandas as pd
-from openfermion import jordan_wigner, FermionOperator, QubitOperator
 from pyscf.cc.addons import spatial2spin
 
 from tencirchem import rdtypestr
 from tencirchem.constants import DISCARD_EPS
-from tencirchem.misc import reverse_qop_idx
 from tencirchem.engine_ucc import (
     get_civector,
     get_statevector,
@@ -27,10 +25,7 @@ from tencirchem.engine_ucc import (
     apply_excitation,
     translate_init_state,
 )
-from tencirchem.hamiltonian import (
-    get_h_from_integral,
-    get_hop_from_integral,
-)
+from tencirchem.hamiltonian import get_h_from_integral
 from tencirchem.ci_utils import get_ci_strings, get_ex_bitstring, get_addr, get_init_civector
 
 
@@ -804,21 +799,6 @@ class UCC:
     def nv(self) -> int:
         """The number of virtual (unoccupied orbitals)."""
         return self.active - self.no
-
-    @property
-    def h_fermion_op(self) -> FermionOperator:
-        """
-        Hamiltonian as openfermion.FermionOperator
-        """
-        return get_hop_from_integral(self.int1e, self.int2e) + self.e_core
-
-    @property
-    def h_qubit_op(self) -> QubitOperator:
-        """
-        Hamiltonian as openfermion.QubitOperator, mapped by
-        Jordan-Wigner transformation.
-        """
-        return reverse_qop_idx(jordan_wigner(self.h_fermion_op), self.n_qubits)
 
     @property
     def n_params(self) -> int:
