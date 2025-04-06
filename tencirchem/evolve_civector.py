@@ -12,10 +12,10 @@ import numpy as np
 from openfermion import jordan_wigner
 
 from tencirchem import rdtypestr
-from tencirchem.utils.backend import jit, fori_loop, scan, get_uint_type
-from tencirchem.utils.misc import ex_op_to_fop
-from tencirchem.static.hamiltonian import apply_op
-from tencirchem.static.ci_utils import get_ci_strings, get_addr, get_init_civector
+from tencirchem.backend import jit, fori_loop, scan, get_uint_type
+from tencirchem.misc import ex_op_to_fop
+from tencirchem.hamiltonian import apply_op
+from tencirchem.ci_utils import get_ci_strings, get_addr, get_init_civector
 
 
 logger = logging.getLogger(__name__)

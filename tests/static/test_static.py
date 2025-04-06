@@ -7,7 +7,7 @@ import pytest
 from tencirchem import UCCSD, KUPCCGSD, ROUCCSD
 from tencirchem.static.hamiltonian import get_integral_from_hf, random_integral
 from tencirchem.molecule import _random, h4, h8, h_chain, c4h4
-from tencirchem.utils.misc import canonical_mo_coeff
+from tencirchem.misc import canonical_mo_coeff
 
 
 def get_random_integral_and_fci(n):

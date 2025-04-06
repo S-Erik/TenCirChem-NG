@@ -19,20 +19,19 @@ from pyscf.cc.addons import spatial2spin
 
 from tencirchem import rdtypestr
 from tencirchem.constants import DISCARD_EPS
-from tencirchem.molecule import _Molecule
-from tencirchem.utils.misc import reverse_qop_idx, canonical_mo_coeff
-from tencirchem.static.engine_ucc import (
+from tencirchem.misc import reverse_qop_idx
+from tencirchem.engine_ucc import (
     get_civector,
     get_statevector,
     get_energy,
     apply_excitation,
     translate_init_state,
 )
-from tencirchem.static.hamiltonian import (
+from tencirchem.hamiltonian import (
     get_h_from_integral,
     get_hop_from_integral,
 )
-from tencirchem.static.ci_utils import get_ci_strings, get_ex_bitstring, get_addr, get_init_civector
+from tencirchem.ci_utils import get_ci_strings, get_ex_bitstring, get_addr, get_init_civector
 
 
 logger = logging.getLogger(__name__)
@@ -103,7 +102,6 @@ class UCC:
         else:
             assert n_elec % 2 == 0
             spin = 0
-        m = _Molecule(int1e, int2e, n_elec, spin, e_core, ovlp)
         return cls(int1e, int2e, n_elec, spin, e_core, ovlp, **kwargs)
 
     def __init__(
@@ -117,7 +115,6 @@ class UCC:
         init_method="mp2",
         active_space=None,
         aslst=None,
-        mo_coeff=None,
         engine=None,
         run_hf=True,
         run_mp2=True,
@@ -129,8 +126,17 @@ class UCC:
 
         Parameters
         ----------
-        mol: Mole or RHF
-            The molecule as PySCF ``Mole`` object or the PySCF ``RHF`` object
+        int1e: np.ndarray
+            One-body integral in spatial orbital.
+        int2e: np.ndarray
+            Two-body integral, in spatial orbital, chemists' notation, and without considering symmetry.
+        n_elec: int or tuple
+            The number of electrons, or numbers of alpha/beta electrons
+        e_core: float, optional
+            The nuclear energy or core energy if active space approximation is involved.
+            Defaults to 0.
+        ovlp: np.ndarray
+            The overlap integral. Defaults to ``None`` and identity matrix is used.
         init_method: str, optional
             How to determine the initial amplitude guess. Accepts ``"mp2"`` (default), ``"ccsd"``, ``"fe"``
             and ``"zeros"``.
@@ -146,10 +152,6 @@ class UCC:
                 for choosing the active space orbitals. Here orbital index is 0-based, whereas in PySCF by default it
                 is 1-based.
 
-        mo_coeff: np.ndarray, optional
-            Molecule coefficients. If provided then RHF is skipped.
-            Can be used in combination with the ``init_state`` attribute.
-            Defaults to None which means RHF orbitals are used.
         engine: str, optional
             The engine to run the calculation. See :ref:`advanced:Engines` for details.
         run_hf: bool, optional
@@ -195,7 +197,6 @@ class UCC:
             aslst = list(range(self.inactive_occ, norb - self.inactive_vir))
         if len(aslst) != active_space[1]:
             raise ValueError("sort_mo should have the same length as the number of active orbitals.")
-        frozen_idx = [i for i in range(norb) if i not in aslst]
         self.aslst = aslst
 
         # process backend
@@ -208,12 +209,6 @@ class UCC:
             else:
                 engine = "civector-large"
         self.engine = engine
-
-        # MP2 and CCSD rely on canonical HF orbitals but FCI doesn't
-        # so set custom mo_coeff after MP2 and CCSD and before FCI
-        if mo_coeff is not None:
-            # use user defined coefficient
-            self.mo_coeff = canonical_mo_coeff(mo_coeff)
 
         self.e_nuc = e_core
 
@@ -236,11 +231,6 @@ class UCC:
         self.ex_ops = None
         self._param_ids = None
         self.init_guess = None
-
-        # optimization related
-        self.scipy_minimize_options = None
-        # optimization result
-        self.opt_res = None
         # for manually set
         self._params = None
 
@@ -478,8 +468,6 @@ class UCC:
         """
         self._sanity_check()
         params = self._check_params_argument(params)
-        if params is self.params and self.opt_res is not None:
-            return self.opt_res.e
         hamiltonian, _, engine = self._get_hamiltonian_and_core(engine)
         e = get_energy(
             params,

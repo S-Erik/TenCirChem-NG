@@ -20,7 +20,7 @@ from pyscf import ao2mo
 from tensorcircuit import QuOperator
 
 from tencirchem import rdtypestr
-from tencirchem.utils.misc import fop_to_coo, reverse_qop_idx, canonical_mo_coeff, get_n_qubits
+from tencirchem.misc import fop_to_coo, reverse_qop_idx, canonical_mo_coeff, get_n_qubits
 from tencirchem.constants import DISCARD_EPS
 
 

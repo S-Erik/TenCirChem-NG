@@ -10,7 +10,6 @@ ecore = 0.0
 
 kwargs = {
     "init_method": "zeros",
-    "mo_coeff": np.eye(norb),
     "engine": "civector",
     "run_hf": False,
     "run_mp2": False,

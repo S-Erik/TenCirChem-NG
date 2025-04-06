@@ -10,18 +10,18 @@ import logging
 
 import numpy as np
 
-from tencirchem.utils.backend import jit, value_and_grad
-from tencirchem.utils.misc import unpack_nelec
-from tencirchem.static.hamiltonian import apply_op
-from tencirchem.static.ci_utils import get_ci_strings, civector_to_statevector, statevector_to_civector
-from tencirchem.static.evolve_civector import (
+from tencirchem.backend import jit, value_and_grad
+from tencirchem.misc import unpack_nelec
+from tencirchem.hamiltonian import apply_op
+from tencirchem.ci_utils import get_ci_strings, civector_to_statevector, statevector_to_civector
+from tencirchem.evolve_civector import (
     get_civector_nocache,
     get_energy_and_grad_civector,
     get_energy_and_grad_civector_nocache,
     apply_excitation_civector,
     apply_excitation_civector_nocache,
 )
-from tencirchem.static.evolve_civector import get_civector as get_civector_
+from tencirchem.evolve_civector import get_civector as get_civector_
 
 
 logger = logging.getLogger(__name__)

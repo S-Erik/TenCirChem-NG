@@ -10,8 +10,8 @@ import numpy as np
 from pyscf.fci import cistring
 
 from tencirchem import rdtypestr
-from tencirchem.utils.backend import jit, tensor_set_elem, get_uint_type
-from tencirchem.utils.misc import unpack_nelec
+from tencirchem.backend import jit, tensor_set_elem, get_uint_type
+from tencirchem.misc import unpack_nelec
 
 
 def get_ci_strings(n_qubits, n_elec_s, strs2addr=False):

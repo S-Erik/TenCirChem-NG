@@ -28,7 +28,7 @@ logger.setLevel(logging.WARNING)
 # finish logger stuff
 del logger
 
-from tencirchem.utils.backend import set_backend, set_dtype
+from tencirchem.backend import set_backend, set_dtype
 
 # by default use float64 rather than float32
 set_dtype("complex128")
@@ -38,9 +38,10 @@ rdtypestr = "float64"
 # as an external interface
 from pyscf import M
 
-import tencirchem.static.ucc_all_in_one as ucc_all_in_one
-from tencirchem.static.ucc import UCC
-from tencirchem.static.uccsd import UCCSD, ROUCCSD
+import tencirchem.ucc_all_in_one as ucc_all_in_one
+
+# from tencirchem.static.ucc import UCC
+# from tencirchem.static.uccsd import UCCSD, ROUCCSD
 
 # dynamic module
 # as an external interface
@@ -49,8 +50,8 @@ from renormalizer.model import OpSum
 
 
 def clear_cache():
-    from tencirchem.utils.backend import ALL_JIT_LIBS
-    from .static.evolve_civector import CI_OPERATOR_CACHE, CI_OPERATOR_BATCH_CACHE
+    from tencirchem.backend import ALL_JIT_LIBS
+    from .evolve_civector import CI_OPERATOR_CACHE, CI_OPERATOR_BATCH_CACHE
 
     for l in ALL_JIT_LIBS:
         l.clear()
