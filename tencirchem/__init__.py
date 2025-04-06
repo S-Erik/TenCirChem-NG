@@ -37,6 +37,7 @@ set_dtype("complex128")
 # as an external interface
 from pyscf import M
 
+import tencirchem.static.ucc_all_in_one as ucc_all_in_one
 from tencirchem.static.ucc import UCC
 from tencirchem.static.uccsd import UCCSD, ROUCCSD
 

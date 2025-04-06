@@ -5,7 +5,7 @@ from ex_ops import get_ex1_ops, get_ex2_ops
 
 nelec = (1, 1)
 norb = 2
-h1e, h2e = tcc.static.hamiltonian.random_integral(norb)
+h1e, h2e = tcc.ucc_all_in_one.random_integral(norb)
 ecore = 0.0
 
 kwargs = {
@@ -18,7 +18,7 @@ kwargs = {
     "run_ccsd": False,
     "run_fci": False,
 }
-tcc_uccsd = tcc.UCC.from_integral(h1e, h2e, nelec, ecore)
+tcc_uccsd = tcc.ucc_all_in_one.UCC.from_integral(h1e, h2e, nelec, ecore)
 tcc_uccsd.param_ids = None
 
 single_ex = get_ex1_ops(norb, nelec)
@@ -34,3 +34,5 @@ params = np.random.randn(tcc_uccsd.n_params)
 energy = tcc_uccsd.energy(params)
 print(params)
 print(energy)
+
+assert energy == -0.35955984738805385
