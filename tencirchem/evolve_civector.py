@@ -18,10 +18,19 @@ logger = logging.getLogger(__name__)
 
 
 def get_fket_permutation(f_idx, n_qubits, n_elec_s, ci_strings, strs2addr):
-    mask = 0
+    mask = 0  # Think of a bitstring 0...0000
     for i in f_idx:
-        mask += 1 << i
-    excitation = ci_strings ^ mask
+        mask += 1 << i  # Adding 0..010..0 where 1 is at the i-th position from the right
+        # mask += 2**i  # same as above
+    # mask now is bitstring with a one at each index in f_idx list and zeros otherwise,
+    # where f_idx is an excitation, e.g., (3, 0) or (6, 3, 1, 2)
+    excitation = ci_strings ^ mask  # Flips bits of bitstring ci_strings where mask has ones
+    print("In get_fket_permutation")
+    print(f"ex_op: {f_idx} -> mask: {bin(mask)[2:].zfill(n_qubits)}")
+    print(f"org ci-strings: {[bin(x)[2:].zfill(n_qubits) for x in ci_strings]}")
+    print(f"masked:         {[bin(x)[2:].zfill(n_qubits) for x in excitation]}")
+    print(f"strs2addr:      {strs2addr}")
+    print()
     return get_addr(excitation, n_qubits, n_elec_s, strs2addr)
 
 
@@ -106,21 +115,17 @@ CI_OPERATOR_CACHE = {}
 
 
 def get_operator_tensors(n_qubits, n_elec_s, ex_ops):
-    xp = np
-    batch_key = (xp, rdtypestr, n_qubits, n_elec_s, ex_ops)
+    batch_key = (rdtypestr, n_qubits, n_elec_s, ex_ops)
     if batch_key in CI_OPERATOR_BATCH_CACHE:
         return CI_OPERATOR_BATCH_CACHE[batch_key]
 
     ci_strings, strs2addr = get_ci_strings(n_qubits, n_elec_s, strs2addr=True)
 
-    xp = np
-    fket_permutation_tensor = xp.zeros((len(ex_ops), len(ci_strings)), dtype=uint_type)
-    fket_phase_tensor = xp.zeros((len(ex_ops), len(ci_strings)), dtype=np.int8)
-    f2ket_phase_tensor = xp.zeros((len(ex_ops), len(ci_strings)), dtype=np.int8)
+    fket_permutation_tensor = np.zeros((len(ex_ops), len(ci_strings)), dtype=uint_type)
+    fket_phase_tensor = np.zeros((len(ex_ops), len(ci_strings)), dtype=np.int8)
+    f2ket_phase_tensor = np.zeros((len(ex_ops), len(ci_strings)), dtype=np.int8)
     for i, f_idx in enumerate(ex_ops):
-        if 64 < len(ex_ops):
-            logger.info((i, f_idx))
-        op_key = (xp, rdtypestr, n_qubits, n_elec_s, f_idx)
+        op_key = (rdtypestr, n_qubits, n_elec_s, f_idx)
         if op_key in CI_OPERATOR_CACHE:
             fket_permutation, fket_phase, f2ket_phase = CI_OPERATOR_CACHE[op_key]
         else:
@@ -165,7 +170,9 @@ def get_civector(params, n_qubits, n_elec_s, ex_ops, init_state=None):
     theta_1mcos = 1 - np.cos(theta_tensor)
 
     if init_state is None:
-        civector = get_init_civector(len(ci_strings))
+        civector = np.zeros(len(ci_strings), dtype=rdtypestr)
+        civector[0] = 1
+        # civector = get_init_civector(len(ci_strings)) # Same as above
     else:
         civector = np.asarray(init_state)
     civector = evolve_civector_by_tensor(

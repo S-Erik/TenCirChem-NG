@@ -22,8 +22,8 @@ single_ex = get_ex1_ops(norb, nelec)
 double_ex = get_ex2_ops(norb, nelec)
 tcc_uccsd.ex_ops = double_ex + single_ex
 
-print(tcc_uccsd.ex_ops)
-print(tcc_uccsd.n_params)
+# print(tcc_uccsd.ex_ops)
+# print(tcc_uccsd.n_params)
 
 params = np.random.randn(tcc_uccsd.n_params)
 energy = tcc_uccsd.energy(params)

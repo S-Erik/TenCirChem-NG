@@ -12,33 +12,35 @@ from tencirchem.misc import unpack_nelec
 
 
 def get_ci_strings(n_qubits, n_elec_s, strs2addr=False):
-    xp = np
     if 2**n_qubits > np.iinfo(uint_type).max:
         raise ValueError(f"Too many qubits: {n_qubits}, try using complex128 datatype")
     na, nb = unpack_nelec(n_elec_s)
     beta = cistring.make_strings(range(n_qubits // 2), nb)
-    beta = xp.array(beta, dtype=uint_type)
+    beta = np.array(beta, dtype=uint_type)
     if na == nb:
         alpha = beta
     else:
         alpha = cistring.make_strings(range(n_qubits // 2), na)
-        alpha = xp.array(alpha, dtype=uint_type)
+        alpha = np.array(alpha, dtype=uint_type)
     ci_strings = ((alpha << (n_qubits // 2)).reshape(-1, 1) + beta.reshape(1, -1)).ravel()
     if strs2addr:
         if na == nb:
-            strs2addr = xp.zeros(2 ** (n_qubits // 2), dtype=uint_type)
-            strs2addr[beta] = xp.arange(len(beta))
+            strs2addr = np.zeros(2 ** (n_qubits // 2), dtype=uint_type)
+            strs2addr[beta] = np.arange(len(beta))
         else:
-            strs2addr = xp.zeros((2, 2 ** (n_qubits // 2)), dtype=uint_type)
-            strs2addr[0][alpha] = xp.arange(len(alpha))
-            strs2addr[1][beta] = xp.arange(len(beta))
+            strs2addr = np.zeros((2, 2 ** (n_qubits // 2)), dtype=uint_type)
+            strs2addr[0][alpha] = np.arange(len(alpha))
+            strs2addr[1][beta] = np.arange(len(beta))
         return ci_strings, strs2addr
 
     return ci_strings
 
 
 def get_addr(excitation, n_qubits, n_elec_s, strs2addr, num_strings=None):
-    alpha = excitation >> (n_qubits // 2)
+    alpha = excitation >> (n_qubits // 2)  # Right-shift bitstring by (n_qubits // 2) bits
+    # 2**n is bitstring with a one at index n (counting from right starting from 0)
+    #               0..0   1 0   ..000
+    #   indices:    ...n+1 n n-1 ..210
     beta = excitation & (2 ** (n_qubits // 2) - 1)
     na, nb = n_elec_s
     if na == nb:

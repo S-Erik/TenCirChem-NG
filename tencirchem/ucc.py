@@ -423,6 +423,7 @@ class UCC:
             return np.asarray(civector).astype(rdtypestr)
 
         ci_strings = get_ci_strings(self.n_qubits, self.n_elec_s)
+        # init_state=None if self.init_state is None. In __init__: self.init_state=None
         init_state = translate_init_state(self.init_state, self.n_qubits, ci_strings)
         ket = get_civector_(params, self.n_qubits, self.n_elec_s, tuple(self.ex_ops), init_state=init_state)
         hket = fci_func(ket)
