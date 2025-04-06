@@ -40,23 +40,6 @@ logger = logging.getLogger(__name__)
 Tensor = Any
 
 
-def random_integral(nao: int, seed: int = 2077):
-    np.random.seed(seed)
-    int1e = np.random.uniform(-1, 1, size=(nao, nao))
-    int2e = np.random.uniform(-1, 1, size=(nao, nao, nao, nao))
-    int1e = 0.5 * (int1e + int1e.T)
-    int2e = symmetrize_int2e(int2e)
-    return int1e, int2e
-
-
-def symmetrize_int2e(int2e):
-    int2e = 0.25 * (
-        int2e + int2e.transpose((0, 1, 3, 2)) + int2e.transpose((1, 0, 2, 3)) + int2e.transpose((2, 3, 0, 1))
-    )
-    int2e = 0.5 * (int2e + int2e.transpose(3, 2, 1, 0))
-    return int2e
-
-
 class UCC:
     """
     Base class for :class:`UCCSD`.
@@ -264,7 +247,7 @@ class UCC:
                 f"Excitation operator size {len(self.ex_ops)} and parameter size {len(self.param_ids)} do not match"
             )
 
-    def civector(self, params: Tensor = None, engine: str = None) -> Tensor:
+    def civector(self, params: Tensor = None, engine: str | None = None) -> Tensor:
         """
         Evaluate the configuration interaction (CI) vector.
 
@@ -435,7 +418,7 @@ class UCC:
                 e_core = self.e_core
         return hamiltonian, e_core, engine
 
-    def energy(self, params: Tensor = None, engine: str = None) -> float:
+    def energy(self, params: Tensor = None, engine: str | None = None) -> float:
         """
         Evaluate the total energy.
 
@@ -481,7 +464,7 @@ class UCC:
         )
         return float(e) + self.e_core
 
-    def apply_excitation(self, state: Tensor, ex_op: Tuple, engine: str = None) -> Tensor:
+    def apply_excitation(self, state: Tensor, ex_op: Tuple, engine: str | None = None) -> Tensor:
         """
         Apply a given excitation operator to a given state.
 
@@ -527,11 +510,11 @@ class UCC:
         civector = np.asarray(civector)
         return civector
 
-    def get_ex_ops(self, t1: np.ndarray = None, t2: np.ndarray = None):
+    def get_ex_ops(self, t1: np.ndarray | None = None, t2: np.ndarray | None = None):
         """Virtual method to be implemented"""
         raise NotImplementedError
 
-    def get_ex1_ops(self, t1: np.ndarray = None) -> Tuple[List[Tuple], List[int], List[float]]:
+    def get_ex1_ops(self, t1: np.ndarray | None = None) -> Tuple[List[Tuple], List[int], List[float]]:
         """
         Get one-body excitation operators.
 
@@ -580,7 +563,7 @@ class UCC:
 
         return ex1_ops, ex1_param_ids[1:], ex1_init_guess
 
-    def get_ex2_ops(self, t2: np.ndarray = None) -> Tuple[List[Tuple], List[int], List[float]]:
+    def get_ex2_ops(self, t2: np.ndarray | None = None) -> Tuple[List[Tuple], List[int], List[float]]:
         """
         Get two-body excitation operators.
 
@@ -773,23 +756,13 @@ class UCC:
         """
         Returns energy information dataframe
         """
-        if self.params is None:
-            series_dict = {"HF": self.e_hf, "MP2": self.e_mp2, "CCSD": self.e_ccsd, "FCI": self.e_fci}
-        else:
-            ucc_name = self.__class__.__name__
-            series_dict = {
-                "HF": self.e_hf,
-                "MP2": self.e_mp2,
-                "CCSD": self.e_ccsd,
-                ucc_name: self.energy(),
-                "FCI": self.e_fci,
-            }
+        ucc_name = self.__class__.__name__
+        series_dict = {
+            ucc_name: self.energy(),
+        }
         df = pd.DataFrame()
         energy = pd.Series(series_dict)
         df["energy (Hartree)"] = energy
-        if self.e_fci is not None:
-            df["error (mH)"] = 1e3 * (energy - self.e_fci)
-            df["correlation energy (%)"] = 100 * (energy - self.e_hf) / (self.e_fci - self.e_hf)
         return df
 
     def print_energy(self):
@@ -816,10 +789,6 @@ class UCC:
         print("############################# Excitations #############################")
         self.print_excitations()
         print("######################### Optimization Result #########################")
-        if self.opt_res is None:
-            print("Optimization not run (.opt_res is None)")
-        else:
-            print(self.opt_res)
 
     @property
     def n_elec_s(self):
@@ -841,8 +810,6 @@ class UCC:
         """
         Hamiltonian as openfermion.FermionOperator
         """
-        if self.hcb:
-            raise ValueError("No FermionOperator available for hard-core boson Hamiltonian")
         return get_hop_from_integral(self.int1e, self.int2e) + self.e_core
 
     @property
@@ -894,8 +861,6 @@ class UCC:
         """The circuit parameters."""
         if self._params is not None:
             return self._params
-        if self.opt_res is not None:
-            return self.opt_res.x
         return None
 
     @params.setter

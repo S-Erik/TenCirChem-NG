@@ -5,7 +5,7 @@ from ex_ops import get_ex1_ops, get_ex2_ops
 
 nelec = (1, 1)
 norb = 2
-h1e, h2e = tcc.ucc_all_in_one.random_integral(norb)
+h1e, h2e = tcc.hamiltonian.random_integral(norb)
 ecore = 0.0
 
 kwargs = {

@@ -38,6 +38,7 @@ rdtypestr = "float64"
 # as an external interface
 from pyscf import M
 
+from tencirchem import hamiltonian
 import tencirchem.ucc_all_in_one as ucc_all_in_one
 
 # from tencirchem.static.ucc import UCC

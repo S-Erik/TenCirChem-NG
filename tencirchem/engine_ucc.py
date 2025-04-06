@@ -72,7 +72,7 @@ def get_statevector(params, n_qubits, n_elec_s, ex_ops, param_ids, init_state, e
     return statevector
 
 
-def get_energy(params, hamiltonian, n_qubits, n_elec_s, ex_ops: Tuple, param_ids: Tuple, init_state, engine):
+def get_energy(params, hamiltonian, n_qubits, n_elec_s, ex_ops, param_ids, init_state, engine):
     if param_ids is None:
         param_ids = range(len(ex_ops))
     logger.info(f"Entering `get_energy`")
