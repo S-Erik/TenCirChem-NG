@@ -17,6 +17,7 @@ from openfermion.utils import hermitian_conjugated
 from qiskit.quantum_info import SparsePauliOp
 import tensorcircuit as tc
 
+from tencirchem import rdtypestr
 from tencirchem.constants import DISCARD_EPS
 
 
@@ -24,7 +25,7 @@ def csc_to_coo(csc):
     coo = coo_matrix(csc)
     mask = DISCARD_EPS < np.abs(coo.data.real)
     indices = np.array([coo.row[mask], coo.col[mask]]).T
-    values = coo.data.real[mask].astype(tc.rdtypestr)
+    values = coo.data.real[mask].astype(rdtypestr)
     return tc.backend.coo_sparse_matrix(indices=indices, values=values, shape=coo.shape)
 
 

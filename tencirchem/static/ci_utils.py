@@ -10,12 +10,13 @@ import numpy as np
 from pyscf.fci import cistring
 import tensorcircuit as tc
 
-from tencirchem.utils.backend import jit, tensor_set_elem, get_xp, get_uint_type
+from tencirchem import rdtypestr
+from tencirchem.utils.backend import jit, tensor_set_elem, get_uint_type
 from tencirchem.utils.misc import unpack_nelec
 
 
 def get_ci_strings(n_qubits, n_elec_s, strs2addr=False):
-    xp = get_xp(tc.backend)
+    xp = np
     uint_type = get_uint_type()
     if 2**n_qubits > np.iinfo(uint_type).max:
         raise ValueError(f"Too many qubits: {n_qubits}, try using complex128 datatype")
@@ -78,7 +79,7 @@ def get_ex_bitstring(n_qubits, n_elec_s, ex_op):
 
 
 def civector_to_statevector(civector, n_qubits, ci_strings):
-    statevector = tc.backend.zeros(2**n_qubits, dtype=tc.rdtypestr)
+    statevector = tc.backend.zeros(2**n_qubits, dtype=rdtypestr)
     return tensor_set_elem(statevector, ci_strings, civector)
 
 
@@ -88,6 +89,6 @@ def statevector_to_civector(statevector, ci_strings):
 
 @partial(jit, static_argnums=[0])
 def get_init_civector(len_ci):
-    civector = tc.backend.zeros(len_ci, dtype=tc.rdtypestr)
+    civector = tc.backend.zeros(len_ci, dtype=rdtypestr)
     civector = tensor_set_elem(civector, 0, 1)
     return civector

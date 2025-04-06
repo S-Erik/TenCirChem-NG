@@ -12,7 +12,8 @@ import numpy as np
 from openfermion import jordan_wigner
 import tensorcircuit as tc
 
-from tencirchem.utils.backend import jit, fori_loop, scan, get_xp, get_uint_type
+from tencirchem import rdtypestr
+from tencirchem.utils.backend import jit, fori_loop, scan, get_uint_type
 from tencirchem.utils.misc import ex_op_to_fop
 from tencirchem.static.hamiltonian import apply_op
 from tencirchem.static.ci_utils import get_ci_strings, get_addr, get_init_civector
@@ -91,7 +92,7 @@ def get_fermion_phase(f_idx, n_qubits, ci_strings):
 def get_operators(n_qubits, n_elec_s, strs2addr, f_idx, ci_strings):
     if len(set(f_idx)) != len(f_idx):
         raise ValueError(f"Excitation {f_idx} not supported")
-    xp = get_xp(tc.backend)
+    xp = np
     fket_permutation = get_fket_permutation(f_idx, n_qubits, n_elec_s, ci_strings, strs2addr)
     fket_phase = xp.zeros(len(ci_strings))
     positive, negative = get_fket_phase(f_idx, ci_strings)
@@ -111,22 +112,22 @@ CI_OPERATOR_CACHE = {}
 
 @partial(jit, static_argnums=[0, 1, 2, 3])
 def get_operator_tensors(n_qubits, n_elec_s, ex_ops):
-    xp = get_xp(tc.backend)
-    batch_key = (xp, tc.rdtypestr, n_qubits, n_elec_s, ex_ops)
+    xp = np
+    batch_key = (xp, rdtypestr, n_qubits, n_elec_s, ex_ops)
     is_jax_backend = tc.backend.name == "jax"
     if not is_jax_backend and batch_key in CI_OPERATOR_BATCH_CACHE:
         return CI_OPERATOR_BATCH_CACHE[batch_key]
 
     ci_strings, strs2addr = get_ci_strings(n_qubits, n_elec_s, strs2addr=True)
 
-    xp = get_xp(tc.backend)
+    xp = np
     fket_permutation_tensor = xp.zeros((len(ex_ops), len(ci_strings)), dtype=get_uint_type())
     fket_phase_tensor = xp.zeros((len(ex_ops), len(ci_strings)), dtype=np.int8)
     f2ket_phase_tensor = xp.zeros((len(ex_ops), len(ci_strings)), dtype=np.int8)
     for i, f_idx in enumerate(ex_ops):
         if 64 < len(ex_ops):
             logger.info((i, f_idx))
-        op_key = (xp, tc.rdtypestr, n_qubits, n_elec_s, f_idx)
+        op_key = (xp, rdtypestr, n_qubits, n_elec_s, f_idx)
         if not is_jax_backend and op_key in CI_OPERATOR_CACHE:
             fket_permutation, fket_phase, f2ket_phase = CI_OPERATOR_CACHE[op_key]
         else:

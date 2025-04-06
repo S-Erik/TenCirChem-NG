@@ -20,6 +20,7 @@ from pyscf import ao2mo
 import tensorcircuit as tc
 from tensorcircuit import QuOperator
 
+from tencirchem import rdtypestr
 from tencirchem.utils.misc import fop_to_coo, reverse_qop_idx, canonical_mo_coeff, get_n_qubits
 from tencirchem.constants import DISCARD_EPS
 
@@ -149,7 +150,7 @@ def get_h_fcifunc_from_integral(int1e, int2e, n_elec):
     def fci_func(civector):
         civector = tc.backend.numpy(civector).astype(np.float64)
         civector = direct_nosym.contract_2e(h2e, civector, norb=n_orb, nelec=n_elec)
-        return tc.backend.convert_to_tensor(civector).astype(tc.rdtypestr)
+        return tc.backend.convert_to_tensor(civector).astype(rdtypestr)
 
     return fci_func
 

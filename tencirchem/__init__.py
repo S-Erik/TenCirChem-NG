@@ -32,6 +32,7 @@ from tencirchem.utils.backend import set_backend, set_dtype
 
 # by default use float64 rather than float32
 set_dtype("complex128")
+rdtypestr = "float64"
 
 # static module
 # as an external interface

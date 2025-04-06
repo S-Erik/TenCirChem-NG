@@ -12,20 +12,13 @@ import logging
 from typing import Any, Tuple, Callable, List, Union
 
 import numpy as np
-from scipy.optimize import minimize
 from scipy.special import comb
 import pandas as pd
 from openfermion import jordan_wigner, FermionOperator, QubitOperator
-from pyscf.gto.mole import Mole
-from pyscf.scf import RHF
-from pyscf.scf import ROHF
-from pyscf.scf.hf import RHF as RHF_TYPE
-from pyscf.scf.rohf import ROHF as ROHF_TYPE
 from pyscf.cc.addons import spatial2spin
-from pyscf.mcscf import CASCI
-from pyscf import fci
 import tensorcircuit as tc
 
+from tencirchem import rdtypestr
 from tencirchem.constants import DISCARD_EPS
 from tencirchem.molecule import _Molecule
 from tencirchem.utils.misc import reverse_qop_idx, canonical_mo_coeff
@@ -33,12 +26,10 @@ from tencirchem.static.engine_ucc import (
     get_civector,
     get_statevector,
     get_energy,
-    get_energy_and_grad,
     apply_excitation,
     translate_init_state,
 )
 from tencirchem.static.hamiltonian import (
-    get_integral_from_hf,
     get_h_from_integral,
     get_hop_from_integral,
 )
@@ -269,7 +260,7 @@ class UCC:
 
         if len(params) != self.n_params:
             raise ValueError(f"Incompatible parameter shape. {self.n_params} is desired. Got {len(params)}")
-        return tc.backend.convert_to_tensor(params).astype(tc.rdtypestr)
+        return tc.backend.convert_to_tensor(params).astype(rdtypestr)
 
     def _check_engine(self, engine):
         supported_engine = [None, "tensornetwork", "statevector", "civector", "civector-large", "pyscf"]
