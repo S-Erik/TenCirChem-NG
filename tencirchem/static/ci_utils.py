@@ -8,7 +8,6 @@ from functools import partial
 
 import numpy as np
 from pyscf.fci import cistring
-import tensorcircuit as tc
 
 from tencirchem import rdtypestr
 from tencirchem.utils.backend import jit, tensor_set_elem, get_uint_type
@@ -79,7 +78,7 @@ def get_ex_bitstring(n_qubits, n_elec_s, ex_op):
 
 
 def civector_to_statevector(civector, n_qubits, ci_strings):
-    statevector = tc.backend.zeros(2**n_qubits, dtype=rdtypestr)
+    statevector = np.zeros(2**n_qubits, dtype=rdtypestr)
     return tensor_set_elem(statevector, ci_strings, civector)
 
 
@@ -89,6 +88,6 @@ def statevector_to_civector(statevector, ci_strings):
 
 @partial(jit, static_argnums=[0])
 def get_init_civector(len_ci):
-    civector = tc.backend.zeros(len_ci, dtype=rdtypestr)
+    civector = np.zeros(len_ci, dtype=rdtypestr)
     civector = tensor_set_elem(civector, 0, 1)
     return civector

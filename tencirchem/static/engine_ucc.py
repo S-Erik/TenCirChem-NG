@@ -8,7 +8,7 @@ from functools import partial
 from typing import Tuple
 import logging
 
-import tensorcircuit as tc
+import numpy as np
 
 from tencirchem.utils.backend import jit, value_and_grad
 from tencirchem.utils.misc import unpack_nelec
@@ -134,7 +134,7 @@ def apply_excitation(state, n_qubits, n_elec_s, ex_op, engine):
     if engine not in APPLY_EXCITATION_MAP:
         raise ValueError(f"Engine '{engine}' not supported")
 
-    state = tc.backend.convert_to_tensor(state)
+    state = np.asarray(state)
 
     is_statevector_input = len(state) == (1 << n_qubits)
     is_statevector_engine = engine in ["tensornetwork", "statevector"]
@@ -159,12 +159,8 @@ def apply_excitation(state, n_qubits, n_elec_s, ex_op, engine):
 def translate_init_state(init_state, n_qubits, ci_strings):
     if init_state is None:
         return None
-    # translate to civector first for all engines to be JAX-compatible
-    if isinstance(init_state, tc.Circuit):
-        # note no cupy backend for tc
-        init_state = statevector_to_civector(tc.backend.convert_to_tensor(init_state.state().real), ci_strings)
-    else:
-        is_statevector_input = len(init_state) == (1 << n_qubits)
-        if is_statevector_input:
-            init_state = statevector_to_civector(init_state, ci_strings)
-    return tc.backend.convert_to_tensor(init_state)
+
+    is_statevector_input = len(init_state) == (1 << n_qubits)
+    if is_statevector_input:
+        init_state = statevector_to_civector(init_state, ci_strings)
+    return np.asarray(init_state)

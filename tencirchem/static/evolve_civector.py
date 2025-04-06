@@ -10,7 +10,6 @@ from typing import Tuple
 
 import numpy as np
 from openfermion import jordan_wigner
-import tensorcircuit as tc
 
 from tencirchem import rdtypestr
 from tencirchem.utils.backend import jit, fori_loop, scan, get_uint_type
@@ -114,8 +113,7 @@ CI_OPERATOR_CACHE = {}
 def get_operator_tensors(n_qubits, n_elec_s, ex_ops):
     xp = np
     batch_key = (xp, rdtypestr, n_qubits, n_elec_s, ex_ops)
-    is_jax_backend = tc.backend.name == "jax"
-    if not is_jax_backend and batch_key in CI_OPERATOR_BATCH_CACHE:
+    if batch_key in CI_OPERATOR_BATCH_CACHE:
         return CI_OPERATOR_BATCH_CACHE[batch_key]
 
     ci_strings, strs2addr = get_ci_strings(n_qubits, n_elec_s, strs2addr=True)
@@ -128,23 +126,21 @@ def get_operator_tensors(n_qubits, n_elec_s, ex_ops):
         if 64 < len(ex_ops):
             logger.info((i, f_idx))
         op_key = (xp, rdtypestr, n_qubits, n_elec_s, f_idx)
-        if not is_jax_backend and op_key in CI_OPERATOR_CACHE:
+        if op_key in CI_OPERATOR_CACHE:
             fket_permutation, fket_phase, f2ket_phase = CI_OPERATOR_CACHE[op_key]
         else:
             fket_permutation, fket_phase, f2ket_phase = get_operators(n_qubits, n_elec_s, strs2addr, f_idx, ci_strings)
-            if not is_jax_backend:
-                CI_OPERATOR_CACHE[op_key] = fket_permutation, fket_phase, f2ket_phase
+            CI_OPERATOR_CACHE[op_key] = fket_permutation, fket_phase, f2ket_phase
         fket_permutation_tensor[i] = fket_permutation
         fket_phase_tensor[i] = fket_phase
         f2ket_phase_tensor[i] = f2ket_phase
 
-    fket_permutation_tensor = tc.backend.convert_to_tensor(fket_permutation_tensor)
-    fket_phase_tensor = tc.backend.convert_to_tensor(fket_phase_tensor)
-    f2ket_phase_tensor = tc.backend.convert_to_tensor(f2ket_phase_tensor)
+    fket_permutation_tensor = np.asarray(fket_permutation_tensor)
+    fket_phase_tensor = np.asarray(fket_phase_tensor)
+    f2ket_phase_tensor = np.asarray(f2ket_phase_tensor)
 
     ret = ci_strings, fket_permutation_tensor, fket_phase_tensor, f2ket_phase_tensor
-    if not is_jax_backend:
-        CI_OPERATOR_BATCH_CACHE[batch_key] = ret
+    CI_OPERATOR_BATCH_CACHE[batch_key] = ret
     return ret
 
 
@@ -154,9 +150,9 @@ def get_theta_tensors(params, param_ids):
     for param_id in param_ids:
         theta_list.append(params[param_id])
 
-    theta_tensor = tc.backend.convert_to_tensor(theta_list)
-    theta_sin_tensor = tc.backend.sin(theta_tensor)
-    theta_1mcos_tensor = 1 - tc.backend.cos(theta_tensor)
+    theta_tensor = np.asarray(theta_list)
+    theta_sin_tensor = np.sin(theta_tensor)
+    theta_1mcos_tensor = 1 - np.cos(theta_tensor)
     return theta_sin_tensor, theta_1mcos_tensor
 
 
@@ -180,9 +176,6 @@ def evolve_civector_by_tensor(
 
 @partial(jit, static_argnums=[1, 2, 3, 4, 5])
 def get_civector(params, n_qubits, n_elec_s, ex_ops, param_ids, init_state=None):
-    if tc.backend.name == "jax":
-        logger.info(f"Entering `get_civector`. n_qubit: {n_qubits}")
-
     ci_strings, fket_permutation_tensor, fket_phase_tensor, f2ket_phase_tensor = get_operator_tensors(
         n_qubits, n_elec_s, ex_ops
     )
@@ -191,7 +184,7 @@ def get_civector(params, n_qubits, n_elec_s, ex_ops, param_ids, init_state=None)
     if init_state is None:
         civector = get_init_civector(len(ci_strings))
     else:
-        civector = tc.backend.convert_to_tensor(init_state)
+        civector = np.asarray(init_state)
     civector = evolve_civector_by_tensor(
         civector, fket_permutation_tensor, fket_phase_tensor, f2ket_phase_tensor, theta_sin, theta_1mcos
     )
@@ -211,7 +204,7 @@ def get_energy_and_grad_civector(
     op_tensors = list(op_tensors) + list(theta_tensors)
     gradients_beforesum = _get_gradients_civector(bra, ket, *op_tensors[1:])
 
-    gradients_beforesum = tc.backend.numpy(gradients_beforesum)
+    gradients_beforesum = np.asarray(gradients_beforesum)
     gradients = np.zeros(params.shape)
     for grad, param_id in zip(gradients_beforesum, param_ids):
         gradients[param_id] += grad
@@ -253,16 +246,13 @@ def evolve_excitation_nocache(civector, fket_permutation, fket_phase, f2ket_phas
 
 @partial(jit, static_argnums=[1, 2, 3, 4, 5])
 def get_civector_nocache(params, n_qubits, n_elec_s, ex_ops, param_ids, init_state=None):
-    if tc.backend.name == "jax":
-        logger.info(f"Entering `get_civector_nocache`. n_qubit: {n_qubits}")
-
     theta_sin_tensor, theta_1mcos_tensor = get_theta_tensors(params, param_ids)
     ci_strings, strs2addr = get_ci_strings(n_qubits, n_elec_s, strs2addr=True)
 
     if init_state is None:
         civector = get_init_civector(len(ci_strings))
     else:
-        civector = tc.backend.convert_to_tensor(init_state)
+        civector = np.asarray(init_state)
 
     for theta_sin, theta_1mcos, f_idx in zip(theta_sin_tensor, theta_1mcos_tensor, ex_ops):
         fket_permutation, fket_phase, f2ket_phase = get_operators(n_qubits, n_elec_s, strs2addr, f_idx, ci_strings)
@@ -304,7 +294,7 @@ def _get_gradients_civector_nocache(bra, ket, params, n_qubits, n_elec_s, ex_ops
         grad = bra @ fket
         gradients_beforesum.append(grad)
     gradients_beforesum = list(reversed(gradients_beforesum))
-    gradients_beforesum = tc.backend.convert_to_tensor(gradients_beforesum)
+    gradients_beforesum = np.asarray(gradients_beforesum)
 
     return gradients_beforesum
 

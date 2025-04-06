@@ -17,7 +17,6 @@ from pyscf.scf.hf import RHF
 from pyscf.mcscf import CASCI
 from pyscf.fci import direct_nosym, cistring
 from pyscf import ao2mo
-import tensorcircuit as tc
 from tensorcircuit import QuOperator
 
 from tencirchem import rdtypestr
@@ -148,9 +147,9 @@ def get_h_fcifunc_from_integral(int1e, int2e, n_elec):
     h2e = direct_nosym.absorb_h1e(int1e, int2e, n_orb, n_elec, 0.5)
 
     def fci_func(civector):
-        civector = tc.backend.numpy(civector).astype(np.float64)
+        civector = np.asarray(civector).astype(np.float64)
         civector = direct_nosym.contract_2e(h2e, civector, norb=n_orb, nelec=n_elec)
-        return tc.backend.convert_to_tensor(civector).astype(rdtypestr)
+        return np.asarray(civector).astype(rdtypestr)
 
     return fci_func
 
@@ -209,14 +208,6 @@ def mpo_to_quoperator(mpo: Mpo):
 
 
 def apply_op(op, state):
-    if isinstance(op, list):
-        # in MPO form
-        n_qubit = get_n_qubits(state)
-        n_qubit_op = get_n_qubits(op)
-        assert n_qubit == n_qubit_op
-        mps = tc.QuVector.from_tensor(state.reshape([2] * n_qubit))
-        h_qop = mpo_to_quoperator(op)
-        return (h_qop @ mps).eval().reshape(-1)
     if isfunction(op):
         return op(state)
     else:

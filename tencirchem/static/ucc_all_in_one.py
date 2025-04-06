@@ -16,7 +16,6 @@ from scipy.special import comb
 import pandas as pd
 from openfermion import jordan_wigner, FermionOperator, QubitOperator
 from pyscf.cc.addons import spatial2spin
-import tensorcircuit as tc
 
 from tencirchem import rdtypestr
 from tencirchem.constants import DISCARD_EPS
@@ -260,7 +259,7 @@ class UCC:
 
         if len(params) != self.n_params:
             raise ValueError(f"Incompatible parameter shape. {self.n_params} is desired. Got {len(params)}")
-        return tc.backend.convert_to_tensor(params).astype(rdtypestr)
+        return np.asarray(params).astype(rdtypestr)
 
     def _check_engine(self, engine):
         supported_engine = [None, "tensornetwork", "statevector", "civector", "civector-large", "pyscf"]
@@ -537,7 +536,7 @@ class UCC:
                 else:
                     raise ValueError(f"Incompatible statevector size: {len(statevector)}")
 
-        civector = tc.backend.numpy(tc.backend.convert_to_tensor(civector))
+        civector = np.asarray(civector)
         return civector
 
     def get_ex_ops(self, t1: np.ndarray = None, t2: np.ndarray = None):
