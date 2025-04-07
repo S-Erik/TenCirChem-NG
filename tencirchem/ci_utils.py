@@ -66,7 +66,7 @@ def get_addr(excitation, n_qubits, n_elec_s, strs2addr, num_strings=None):
     # print(f"num_strings: {num_strings}")
     # print(f"alpha_addr * num_strings + beta_addr: {alpha_addr * num_strings + beta_addr}")
     # print()
-    # TODO: Unclear what strs2addr and return value represent
+    # TODO: Unclear what strs2addr and return value represents
     return alpha_addr * num_strings + beta_addr
 
 

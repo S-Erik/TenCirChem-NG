@@ -31,6 +31,7 @@ def get_fket_permutation(f_idx, n_qubits, n_elec_s, ci_strings, strs2addr):
     # print(f"masked:         {[bin(x)[2:].zfill(n_qubits) for x in excitation]}")
     # print(f"strs2addr:      {strs2addr}\ttype: {type(strs2addr)}, type element: {type(strs2addr[0])}")
     # print()
+    # TODO: Unclear what get_addr does here and what return value represents
     return get_addr(excitation, n_qubits, n_elec_s, strs2addr)
 
 
@@ -50,23 +51,27 @@ def get_fket_phase(f_idx, ci_strings):
     # True/1 where `masked` matches exaclty `mask`
     # equivalent to: True/1 where the ci-string is not mapped to the zero state by the excitation
     # equivalent to: True/1 where the ci-string is not destroyed by the excitation
-    # equivalent to: True/1 where the excitation can act on the ci-string without destryoing the state
+    # equivalent to: True/1 where the excitation a^† a (or a^† a^† a a) can act on the ci-string without destryoing the state
+    # equivalent to: True/1 where the ci-string is UNOCCUPIED on EVERY orbital the creation operators act on
+    #                       and OCCUPIED on EVERY orbital the annihilation operators act on
     positive = masked == mask
     # True/1 where `masked` is equal to all zero bitstring
-    # equivalent to: True/1 where the ci-string is occupied on EVERY orbital the creation operators act on
-    #                       and unoccupied on EVERY orbital the annihilation operators act on
+    # equivalent to: True/1 where the excitation a a^† (or a a a^† a^†), which is the hermiatin conjugate of a^† a (or a^† a^† a a) from above,
+    #                can act on the ci-string without destryoing the state
+    # equivalent to: True/1 where the ci-string is OCCUPIED on EVERY orbital the creation operators act on
+    #                       and UNOCCUPIED on EVERY orbital the annihilation operators act on
     negative = masked == 0
-    print("In get_fket_phase")
-    print(f"ex_op: {f_idx}")
-    print(f"ci_strings: {[bin(x)[2:] for x in ci_strings]}")
-    print(f"mask1:      {bin(mask1)[2:]}")
-    print(f"mask2:      {bin(mask2)[2:]}")
-    print(f"mask:       {bin(mask)[2:]}")
-    print(f"flip:       {[bin(x)[2:] for x in flip]}")
-    print(f"masked:     {[bin(x)[2:] for x in masked]}")
-    print(f"positive:   {[int(x) for x in positive]}")
-    print(f"negative:   {[int(x) for x in negative]}")
-    print()
+    # print("In get_fket_phase")
+    # print(f"ex_op: {f_idx}")
+    # print(f"ci_strings: {[bin(x)[2:] for x in ci_strings]}")
+    # print(f"mask1:      {bin(mask1)[2:]}")
+    # print(f"mask2:      {bin(mask2)[2:]}")
+    # print(f"mask:       {bin(mask)[2:]}")
+    # print(f"flip:       {[bin(x)[2:] for x in flip]}")
+    # print(f"masked:     {[bin(x)[2:] for x in masked]}")
+    # print(f"positive:   {[int(x) for x in positive]}")
+    # print(f"negative:   {[int(x) for x in negative]}")
+    # print()
     return positive, negative
 
 
@@ -89,26 +94,60 @@ def get_fermion_phase(f_idx, n_qubits, ci_strings):
                 continue
             mask_str[n_qubits - 1 - idx] = "1"
         mask = uint_type(int("".join(mask_str), base=2))
+        # mask is bitstring with one where Z operators act one when the excitation is mapped with the Jordan-Wigner mapper
+        # TODO: This can be done more efficient, right? We do not need to do the JW mapping to know where the Z operators act on
 
+        # TODO: What does the following mean physically?
+        # TODO: For 10e 10o there is no sign=1. When is sign set to 1? For spin-polarized systems?
+        # TODO: qop.terms.items() can be e.g.:
+        #       dict_items([
+        #           (((0, 'Y'), (1, 'Z'), (2, 'X')), 0.25j),
+        #           (((0, 'X'), (1, 'Z'), (2, 'X')), (0.25+0j)),
+        #           (((0, 'Y'), (1, 'Z'), (2, 'Y')), (0.25+0j)),
+        #           (((0, 'X'), (1, 'Z'), (2, 'Y')), -0.25j)
+        #       ])
+        #       The dict_items get sorted by key and tuples are sorted element-by-element.
+        #       [0][1] gives first value of (key, value) item of sorted items list
+        #       (0, ...) < (1, ...) and (..., "X") < (..., "Y").
+        #       Here we would get
+        #           (((0, 'X'), (1, 'Z'), (2, 'X')), (0.25+0j)),
+        #           ...
+        #       We, therefore, always get keys only containing X's and Z's.
+        #       There cannot be Y's since they would be in the place of the X's,
         if sorted(qop.terms.items())[0][1].real > 0:
             sign = -1
         else:
             sign = 1
 
+        # print("In get_fermion_phase")
+        # print(f"ex_op:                 {f_idx}")
+        # print(f"fop:                   {fop}")
+        # print(f"qop:                   {qop}")
+        # print(f"qop.terms:             {qop.terms}")
+        # print(f"qop.terms.items:       {qop.terms.items()}")
+        # print(f"sorted qop:            {sorted(qop.terms.items())}")
+        # print(f"sign:                  {sign}")
+        # print(f"ci_strings:            {[bin(x)[2:].zfill(n_qubits) for x in ci_strings]}")
+        # print(f"mask:                  {bin(mask)[2:].zfill(n_qubits)} = {mask}")
+        # print()
+
         FERMION_PHASE_MASK_CACHE[f_idx] = mask, sign
 
     parity = ci_strings & mask
-    assert parity.dtype in [np.uint32, np.uint64]
-    if parity.dtype == np.uint32:
-        mask = 0x11111111
-        shift = 28
-    else:
-        mask = 0x1111111111111111
-        shift = 60
-    parity ^= parity >> 1
-    parity ^= parity >> 2
-    parity = (parity & mask) * mask
-    parity = (parity >> shift) & 1
+    print(f"parity:                {[bin(x)[2:].zfill(n_qubits) for x in parity]}")
+    parity = np.asarray([bin(x)[2:].count("1") % 2 for x in parity])  # Check parity of bitstring, same as below, right?
+    # Following checks if parity has an even/odd number of ones (then parity will be 0/1 before return)
+    # assert parity.dtype in [np.uint32, np.uint64]
+    # if parity.dtype == np.uint32:
+    #     mask = 0x11111111
+    #     shift = 28
+    # else:
+    #     mask = 0x1111111111111111
+    #     shift = 60
+    # parity ^= parity >> 1
+    # parity ^= parity >> 2
+    # parity = (parity & mask) * mask
+    # parity = (parity >> shift) & 1
 
     return sign * np.sign(parity - 0.5).astype(np.int8)
 
@@ -116,14 +155,23 @@ def get_fermion_phase(f_idx, n_qubits, ci_strings):
 def get_operators(n_qubits, n_elec_s, strs2addr, f_idx, ci_strings):
     if len(set(f_idx)) != len(f_idx):
         raise ValueError(f"Excitation {f_idx} not supported")
-    xp = np
+    # TODO: Unclear what the following does
     fket_permutation = get_fket_permutation(f_idx, n_qubits, n_elec_s, ci_strings, strs2addr)
-    fket_phase = xp.zeros(len(ci_strings))
+    fket_phase = np.zeros(len(ci_strings))
+    # positive and negative are lists. length is number of ci-strings
+    # Each element in positive/negative says if the corresponding ci-string satisfies a certain condition.
+    # The element is (0)1 if condition is (not) satisfied.
+    # positive condition: excitation f_idx (a^† a OR a^† a^† a a) can act on the ci-string without destryoing the state
+    # positive condition: excitation f_idx (a a^† OR a a a^† a^†) can act on the ci-string without destryoing the state
+    # Remember an excitation in the UCC is e^(a^† a - a a^†) OR e^(a^† a^† a a - a a a^† a^†)
     positive, negative = get_fket_phase(f_idx, ci_strings)
+    # TODO: -= since excitation generates |psi_0> - |psi_1>, where psi_0(1) is the ci-string before (after) applying the excitation?
     fket_phase -= positive
     fket_phase += negative
     fket_phase *= get_fermion_phase(f_idx, n_qubits, ci_strings)
-    f2ket_phase = xp.zeros(len(ci_strings))
+
+    f2ket_phase = np.zeros(len(ci_strings))
+    # TODO: Why -= for both positive and negative. Why not += positive and -=negative?
     f2ket_phase -= positive
     f2ket_phase -= negative
 
